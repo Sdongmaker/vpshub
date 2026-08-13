@@ -1,7 +1,7 @@
 // Smoke test for the published package: mount apply() on a fake Cordis ctx,
 // then exercise vps_list and vps_exec against the real ledger and the real
 // orca target. Run: node smoke.mjs
-import { apply } from './src/index.js'
+import { apply } from '../src/index.js'
 
 const registered = []
 const fakeCtx = {

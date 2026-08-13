@@ -1,16 +1,106 @@
 # dsh-vps-hub
 
-VPS Hub plugin for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness): keep a local ledger of your cloud-server SSH targets and let agents **discover**, **test**, **execute on**, and **transfer files to** them — the way [Orca](https://github.com/stablyai/orca) manages SSH remote hosts, but built for DSH's agent plane.
+**VPS Hub for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)** — keep a local ledger of your cloud-server SSH targets and let agents **discover, test, execute on, and transfer files to** them, with an optional **Settings-page UI**, modeled after [Orca](https://github.com/stablyai/orca)'s SSH remote-host management.
+
+| | |
+|---|---|
+| **Agent tools** | `vps_list` `vps_import_ssh_config` `vps_add` `vps_remove` `vps_test` `vps_exec` `vps_upload` `vps_download` |
+| **Settings UI** | optional — Settings → "VPS Hub" page (server cards, test-connect, add form with `~/.ssh/config` alias prefill, remove) |
+| **Storage** | one JSON ledger, Orca-style: targets (`source: ssh-config \| manual`), removal tombstones, deleted-alias suppression |
+| **Keys** | stored as **path references only** — contents never stored, transmitted, or shown to the model |
+
+---
 
 ## Why
 
-- **Agent-discoverable**: `vps_list` / `vps_import_ssh_config` let the agent find your servers without you re-typing connection details.
-- **Zero new daemons**: execution shells out to the system `ssh` / `scp` binaries (`execFile`, no shell interpolation), so there is no relay daemon to deploy and no npm SSH library to maintain.
+- **Agent-discoverable**: `vps_list` / `vps_import_ssh_config` let the agent find your servers without re-typing connection details, and `vps_exec` / `vps_upload` / `vps_download` let it operate them (deploys, inspections, log reads, file transfer).
+- **Orca-style management**: the Settings page mirrors Orca's `Settings → SSH` — pick a host from `~/.ssh/config` (Include-expanded, `*`/`?` wildcards, `Host *` fallback) and it prefills the form; saved hosts show an "in ledger" mark.
+- **Zero new daemons**: execution shells out to the system `ssh` / `scp` binaries. The packaged plugin uses `execFile` (no shell interpolation); the dynamic-plugin variant uses the DSH shell service.
 - **Keys never leave your machine**: the ledger stores only `identityFile` *path references*. Key contents are never stored, never transmitted, and never appear in tool output. Password auth is intentionally unsupported.
 
-## Storage (mirrors Orca's SSH-target model)
+---
 
-One JSON document — default `$DSH_HOME`/`~/.dsh/vpshub-targets.json`:
+## Install
+
+### Option A — permanent install (recommended, model tools only)
+
+The plugin is a host-plane Cordis plugin. Install it into your DSH profile's `node_modules`, then add one row to the profile's `cordis.patch.yml`.
+
+```bash
+# from your DSH profile directory (e.g. ~/.dsh/profiles/web)
+npm install dsh-vps-hub
+# or: pnpm add dsh-vps-hub
+```
+
+```yaml
+# cordis.patch.yml  (profile root, e.g. ~/.dsh/profiles/web/cordis.patch.yml)
+- insert:
+    - id: vps-hub
+      name: 'dsh-vps-hub'
+      config:
+        # dataFile: '~/.dsh/vpshub-targets.json'   # optional ledger override
+        # maxOutputBytes: 100000                    # optional output cap
+        # connectTimeoutSec: 8                      # optional connect timeout
+```
+
+Restart (or HMR-reload) the profile. The agent now has the eight `vps_*` tools.
+
+> **Why `cordis.patch.yml` and not `cordis.yml`?** The profile root `cordis.yml` is
+> an empty list composed as patches — edit the patch file, never the root.
+
+### Option B — dynamic plugin (adds the Settings-page UI, session-scoped)
+
+If you want the **Settings → VPS Hub page** without installing the package
+(or to try the UI first), load the verified example as a session dynamic
+Cordis Plugin:
+
+1. Open `examples/dynamic-plugin/` — `host.js` (tools + RPC) and `client.js` (Settings UI).
+2. Call `cordis_define`: paste `apply()`'s body from `host.js` into `code.host`
+   as `return { name: 'vps-hub', apply: <body> }`, and the body from `client.js`
+   into `code.client` as `return { name: 'vps-hub-ui', apply: <body> }`.
+3. `cordis_run` and approve the client half.
+4. Open **Settings → VPS Hub** — and the eight tools are live in the session.
+
+Dynamic plugins are session-scoped: they vanish when DSH restarts (the ledger
+file persists). Full instructions: [`examples/dynamic-plugin/README.md`](examples/dynamic-plugin/README.md).
+
+### Requirements
+
+- macOS / Linux (system `ssh`, `scp` on `PATH`; Windows is not supported yet)
+- DSH 0.1.0-rc.x with the web profile
+- Private-key authentication (password auth unsupported by design)
+
+---
+
+## Quick start
+
+Once installed, just ask your agent:
+
+| You say | The agent runs |
+|---|---|
+| "list my servers" | `vps_list` |
+| "import my ssh config" | `vps_import_ssh_config` |
+| "add the `hk-prod` alias from my ssh config" | `vps_add { alias: "hk-prod" }` |
+| "is the aliyun box up?" | `vps_test { id }` |
+| "run `df -h` on the aliyun box" | `vps_exec { id, command: "df -h" }` |
+| "upload app.tar.gz to the OVH box" | `vps_upload { id, localPath, remotePath }` |
+
+## Tools
+
+| Tool | Purpose |
+|---|---|
+| `vps_list` | List ledger servers (no key content); filter by tag/text; optional `withStatus` connectivity probe (latency per server) |
+| `vps_import_ssh_config` | Scan `~/.ssh/config` (Include-expanded) and list importable hosts with `alreadyInLedger` marks |
+| `vps_add` | Add a server from a config alias or manual fields; optional pre-save `test` |
+| `vps_remove` | Remove a server, keeping a tombstone + deleted-alias suppression for clean re-add |
+| `vps_test` | Non-interactive connectivity check with latency; updates `lastSeenAt` |
+| `vps_exec` | Run one shell command on a server (output truncated to 100KB by default) |
+| `vps_upload` / `vps_download` | scp file transfer both ways |
+
+## Storage
+
+One JSON document — default `$DSH_HOME` / `~/.dsh/vpshub-targets.json`
+(`dataFile` config overrides):
 
 ```jsonc
 {
@@ -19,12 +109,12 @@ One JSON document — default `$DSH_HOME`/`~/.dsh/vpshub-targets.json`:
     {
       "id": "vps-1786641416471-a1b2c3",
       "label": "aliyun-prod",
-      "configHost": "orca",            // alias when imported from ~/.ssh/config
+      "configHost": "orca",                 // alias when imported from ~/.ssh/config
       "host": "1.2.3.4",
       "port": 22,
       "username": "root",
-      "identityFile": "~/.ssh/id_ed25519",   // path only
-      "source": "ssh-config" | "manual",     // ssh-config targets re-sync on import; manual never overwritten
+      "identityFile": "~/.ssh/id_ed25519",  // path only
+      "source": "ssh-config" | "manual",    // ssh-config targets re-sync on import; manual never overwritten
       "tags": ["aliyun", "prod"],
       "note": "...",
       "lastSeenAt": 1786641416471,
@@ -32,57 +122,72 @@ One JSON document — default `$DSH_HOME`/`~/.dsh/vpshub-targets.json`:
       "updatedAt": 1786641416471
     }
   ],
-  "removedTargets": [],               // tombstones for clean re-add
-  "deletedConfigAliases": []          // aliases suppressed from re-import after removal
+  "removedTargets": [],        // tombstones for clean re-add
+  "deletedConfigAliases": []   // aliases suppressed from re-import after removal
 }
 ```
 
-`~/.ssh/config` is parsed with `Include` expansion and OpenSSH first-match-wins semantics; aliases are matched with `*`/`?` wildcards and a `Host *` fallback.
-
-## Tools
-
-| Tool | Purpose |
-|---|---|
-| `vps_list` | Discover ledger servers; filter by tag/text; optional `withStatus` connectivity probe |
-| `vps_import_ssh_config` | Scan `~/.ssh/config` (Include-expanded) and list importable hosts with `alreadyInLedger` marks |
-| `vps_add` | Add a server from a config alias or manual fields; optional pre-save `test` |
-| `vps_remove` | Remove a server, keeping a tombstone + alias suppression |
-| `vps_test` | Non-interactive connectivity check with latency |
-| `vps_exec` | Run one shell command on a server (output truncated to 100KB) |
-| `vps_upload` / `vps_download` | scp file transfer both ways |
-
-## Install
-
-The plugin is a host-plane Cordis plugin. Install it into your DSH profile's node_modules, then add a row to your profile `cordis.patch.yml`:
-
-```bash
-# from your DSH profile directory (e.g. ~/.dsh/profiles/web)
-npm install dsh-vps-hub   # or: pnpm add dsh-vps-hub
-```
-
-```yaml
-# cordis.patch.yml
-- insert:
-    - id: vps-hub
-      name: 'dsh-vps-hub'
-      config:
-        # dataFile: '~/.dsh/vpshub-targets.json'   # optional override
-        # maxOutputBytes: 100000                    # optional
-        # connectTimeoutSec: 8                      # optional
-```
-
-Restart (or HMR-reload) the profile, then ask your agent: *"list my servers"* → `vps_list`; *"import my ssh config"* → `vps_import_ssh_config`; *"run df -h on the aliyun box"* → `vps_exec`.
-
-### Dynamic-plugin prototype
-
-The same capability was first validated as a session-scoped dynamic Cordis Plugin (`cordis_define` / `cordis_run`). That prototype is superseded by this package; the dynamic-plugin route remains handy for experimenting with tool surfaces without touching the composition.
+This mirrors Orca's SSH-target model (`orca-data.json`): `ssh-config`-sourced
+targets are refreshed on each import, `manual` targets are never overwritten,
+and removing a host records a tombstone plus alias suppression so re-adding
+stays clean.
 
 ## Security notes
 
-- `BatchMode=yes` — no interactive prompts; `StrictHostKeyChecking=accept-new` auto-accepts on first connect (review if you need strict known_hosts enforcement).
-- Commands are passed as a single argv element to `execFile`, so remote commands cannot inject local shell syntax.
-- The ledger file is written atomically (`0600`). Keep your `identityFile`s `0600` as usual.
-- Remote execution is a real power tool: the model can run arbitrary commands on servers you add. Use DSH's permission/approval layer if you want a confirmation gate.
+- `BatchMode=yes` — fully non-interactive; `StrictHostKeyChecking=accept-new`
+  auto-accepts on first connect (switch to `yes` if you need strict
+  `known_hosts` enforcement).
+- The packaged plugin passes the remote command as a **single argv element to
+  `execFile`** — remote commands cannot inject local shell syntax.
+- The ledger file is written atomically with mode `0600`. Keep your
+  `identityFile`s `0600` as usual.
+- Remote execution is a real power tool: the model can run arbitrary commands
+  on servers you add. Use DSH's permission/approval layer if you want a
+  confirmation gate.
+
+## Project layout
+
+```
+dsh-vps-hub/
+├── src/
+│   └── index.js              # packaged host plugin (execFile-based)
+├── examples/
+│   ├── cordis.patch.yml      # profile mount example (Option A)
+│   ├── dynamic-plugin/       # verified session plugin: Settings UI + tools (Option B)
+│   │   ├── README.md
+│   │   ├── host.js
+│   │   └── client.js
+│   └── smoke.mjs             # smoke test against the real ledger (node smoke.mjs)
+├── package.json
+├── README.md / README.zh.md
+└── LICENSE
+```
+
+## Development & testing
+
+```bash
+npm install          # dev deps (zod, @deepseek-ai/dsh-tools)
+node --check src/index.js
+node examples/smoke.mjs   # registers tools on a fake ctx, lists the real
+                          # ledger, and runs a read-only vps_exec
+```
+
+The core logic was verified end-to-end in a live DSH session against real
+servers: import → add → list+status → test → exec → upload → download →
+remove, plus the Settings-page UI loop (discover → test-connect → add →
+delete → alias prefill).
+
+## Limitations
+
+- Windows not supported (requires system `ssh`/`scp`).
+- Password auth unsupported by design (keys only).
+- The Settings-page UI ships as a dynamic-plugin example, not inside the npm
+  package yet — a packaged client half needs the Typert Remote decorator
+  pipeline (TypeScript build) and is planned for a later release.
+- `~/.ssh/config` parsing supports `Include`, `*`/`?` wildcards and `Host *`
+  fallback; token-level OpenSSH semantics beyond that (e.g. `Match`,
+  hostname re-resolution chains) are not implemented — the agent can still
+  `vps_add` such hosts manually with explicit fields.
 
 ## License
 

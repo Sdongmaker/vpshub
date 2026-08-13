@@ -1,0 +1,39 @@
+{
+  "name": "dsh-vps-hub",
+  "version": "0.1.0",
+  "description": "VPS Hub for DeepSeek Harness: manage your cloud-server SSH ledger, import hosts from ~/.ssh/config, and let agents discover, test, execute commands on, and transfer files to your servers. Private keys stay local as path references only.",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Sdongmaker/vpshub.git"
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "cordis",
+    "plugin",
+    "vps",
+    "ssh",
+    "server",
+    "agent"
+  ],
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-tools": "^0.1.0-rc.6"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

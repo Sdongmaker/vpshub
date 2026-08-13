@@ -1,0 +1,13 @@
+# Example: mount dsh-vps-hub into a DSH profile.
+# Add the `insert` block to your profile's cordis.patch.yml
+# (e.g. ~/.dsh/profiles/web/cordis.patch.yml) after installing the package:
+#
+#   cd ~/.dsh/profiles/web && npm install dsh-vps-hub
+#
+- insert:
+    - id: vps-hub
+      name: 'dsh-vps-hub'
+      config:
+        # dataFile: '~/.dsh/vpshub-targets.json'   # optional ledger override
+        # maxOutputBytes: 100000                    # optional output cap
+        # connectTimeoutSec: 8                      # optional connect timeout

@@ -143,6 +143,8 @@ npm install dsh-vps-hub
 
 ```
 dsh-vps-hub/
+├── docs/
+│   └── PLUGIN-DEV-GUIDE.md   # 插件开发→测试→发布实战指南(本项目真实经验沉淀)
 ├── src/
 │   └── index.js              # 正式包 host 插件(execFile 实现)
 ├── examples/

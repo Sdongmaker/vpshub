@@ -162,6 +162,8 @@ stays clean.
 
 ```
 dsh-vps-hub/
+├── docs/
+│   └── PLUGIN-DEV-GUIDE.md   # plugin dev → test → publish playbook (from this project's real experience)
 ├── src/
 │   └── index.js              # packaged host plugin (execFile-based)
 ├── examples/

@@ -7,7 +7,8 @@
 - insert:
     - id: vps-hub
       name: 'dsh-vps-hub'
-      config:
+      config: {}
+        # optional fields (defaults are fine):
         # dataFile: '~/.dsh/vpshub-targets.json'   # optional ledger override
         # maxOutputBytes: 100000                    # optional output cap
         # connectTimeoutSec: 8                      # optional connect timeout

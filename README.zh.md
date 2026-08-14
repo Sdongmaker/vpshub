@@ -52,7 +52,8 @@ npm install dsh-vps-hub         # 或: pnpm add dsh-vps-hub
     - id: vps-hub
       name: 'dsh-vps-hub'
       # 以下均为可选配置,缺省即可用:
-      config:
+      config: {}
+        # 可选字段(默认即可用):
         # dataFile: '~/.dsh/vpshub-targets.json'   # 台账文件路径覆盖
         # maxOutputBytes: 100000                    # 单条命令输出上限(字节)
         # connectTimeoutSec: 8                      # ssh/scp 连接超时(秒)

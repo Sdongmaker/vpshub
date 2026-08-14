@@ -31,7 +31,7 @@ export const Config = z.object({
   maxOutputBytes: z.number().int().positive().max(1048576).optional(),
   /** Connection timeout in seconds for ssh/scp. */
   connectTimeoutSec: z.number().int().positive().max(60).optional(),
-})
+}).nullish()
 
 const execFileAsync = promisify(execFile)
 

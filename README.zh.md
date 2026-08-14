@@ -27,7 +27,7 @@
 
 ## 安装
 
-> 📖 完整**中文图文安装指南**(验证输出、常见问题、升级/卸载):[docs/INSTALL.zh.md](docs/INSTALL.zh.md)
+> 📖 完整**中文图文安装指南**(验证输出、常见问题、升级/卸载):[docs/INSTALL.zh.md](https://github.com/Sdongmaker/vpshub/blob/main/docs/INSTALL.zh.md)
 
 ### 环境要求(Prerequisites)
 
@@ -89,7 +89,7 @@ npm uninstall dsh-vps-hub             # 卸载 —— 同时删除 cordis.patch.
 3. `cordis_run` 并批准 client 半部分(一次性 UI 授权)。
 4. 打开 **设置 → VPS Hub** —— 8 个工具同时在本会话生效。
 
-动态插件是会话级的:DSH 重启后消失(台账文件保留)。完整说明见 [`examples/dynamic-plugin/README.md`](examples/dynamic-plugin/README.md)。
+动态插件是会话级的:DSH 重启后消失(台账文件保留)。完整说明见 [`examples/dynamic-plugin/README.md`](https://github.com/Sdongmaker/vpshub/blob/main/examples/dynamic-plugin/README.md)。
 
 ### 验证安装
 
@@ -171,7 +171,9 @@ ls -l ~/.dsh/vpshub-targets.json
 
 ## 安全说明
 
-- 密钥认证全程非交互(`BatchMode=yes`);密码认证使用 `NumberOfPasswordPrompts=1` + `SSH_ASKPASS_REQUIRE=force`。两者均用 `StrictHostKeyChecking=accept-new`(严格 known_hosts 请改为 `yes`)。
+- 密钥认证全程非交互(`BatchMode=yes`);密码认证使用 `NumberOfPasswordPrompts=1` + `SSH_ASKPASS_REQUIRE=force`。主机密钥默认 `accept-new`;可在插件配置开启 `strictHostKeyChecking: true` 严格校验 `known_hosts`(防 MITM)。
+- **`proxyCommand` 由 `ssh` 通过本地 shell 执行(设计如此)** —— 值被限制在白名单字符集 + `%h`/`%p` 占位符;请视为可信代码。
+- **密码经子进程环境传递**(`VPS_PASSWORD` -> SSH_ASKPASS):POSIX 下同用户进程可读 `/proc/<pid>/environ` —— 请把密码视为对以你身份运行的一切进程可见。密码模式仅 POSIX(Windows 会明确报错)。
 - 密码仅存内存、永不落盘;askpass 桥接脚本位于 `~/.dsh/.vpshub-askpass.sh`(0700),从子进程环境读取密码。重启 DSH 即清空全部缓存密码。
 - **粘贴密钥是权衡**:`identityKeyContent` 会经过模型调用(工具参数),条件允许时优先使用密钥**路径**。保存的内容位于 `~/.dsh/keys/<id>.key`(0600,目录 0700),绝不回显。
 - 正式包把远程命令作为**单个 argv 元素**传给 `execFile` —— 远程命令无法注入本地 shell 语法。
@@ -209,9 +211,18 @@ node examples/smoke.mjs   # 在假 ctx 上注册工具、读取真实台账、�
 
 核心逻辑已在真实 DSH 会话中对真实服务器做过端到端验证:导入 → 添加 → 列表+状态 → 测试 → 执行 → 上传 → 下载 → 删除,以及设置页 UI 全流程(发现 → 测试连接 → 添加 → 删除 → 别名预填)。
 
+## 安全
+
+见 [SECURITY.md](SECURITY.md):安全模型、加固建议与漏洞报告方式。
+
+## 更新日志
+
+见 [CHANGELOG.md](CHANGELOG.md)。
+
 ## 版本历史
 
 - **v0.1.0 → v0.1.1(加载崩溃修复)**:v0.1.0 读取 `ctx.config` 被 Cordis Guard 拒绝,导致 loader entry 失败、整个 Web 进程退出。v0.1.1 改用官方 `apply(ctx, config)` 签名。若你仍在使用 v0.1.0,请升级:`npm install dsh-vps-hub@latest`。
+- **v0.1.1 → v0.1.2(YAML null 配置修复)**:裸 `config:` 只有注释时 YAML 解析为 `null`;zod `Config` 已改为容忍 null(`.nullish()`),文档示例统一为 `config: {}`。
 
 ## 已知限制
 

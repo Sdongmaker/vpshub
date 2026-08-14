@@ -313,6 +313,7 @@ export function apply(ctx) {
     if (args.note) t.note = String(args.note)
     const target = { id: newId(), createdAt: Date.now(), updatedAt: Date.now(), ...t }
     target.label = target.label || target.configHost || target.host
+    validateTargetFields(target)
 
     // key CONTENT → private file, referenced by path; never in the ledger
     if (args.identityKeyContent) {
@@ -454,6 +455,7 @@ export function apply(ctx) {
         if (args.note) t.note = String(args.note)
         const target = { id: newId(), createdAt: Date.now(), updatedAt: Date.now(), ...t }
         target.label = target.label || (target.configHost || target.host)
+        validateTargetFields(target)
         if (args.identityKeyContent) {
           target.identityFile = await saveKeyContent(String(args.identityKeyContent), target.id)
         }

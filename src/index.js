@@ -17,6 +17,7 @@ import { promisify } from 'node:util'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { randomBytes } from 'node:crypto'
 import { z } from 'zod'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 
@@ -31,6 +32,9 @@ export const Config = z.object({
   maxOutputBytes: z.number().int().positive().max(1048576).optional(),
   /** Connection timeout in seconds for ssh/scp. */
   connectTimeoutSec: z.number().int().positive().max(60).optional(),
+  /** Strict known_hosts enforcement (StrictHostKeyChecking=yes). Default false
+   *  keeps accept-new for first-connect convenience; enable for MITM hardening. */
+  strictHostKeyChecking: z.boolean().optional(),
 }).nullish()
 
 const execFileAsync = promisify(execFile)
@@ -51,6 +55,7 @@ function keysDir() {
 }
 
 const passwordCache = new Map() // targetId → password (process memory only)
+const CAPTURE_BUFFER = 8 * 1024 * 1024 // execFile stdout/stderr capture cap
 
 function expandHome(p) {
   if (!p) return p
@@ -91,7 +96,12 @@ function ensureAskpassScript() {
 
 /** Run a binary with argv; password (if any) goes through SSH_ASKPASS env. */
 async function run(bin, args, timeoutMs, password) {
-  const opts = { timeout: timeoutMs, maxBuffer: 4 * 1024 * 1024, encoding: 'utf8' }
+  // Windows OpenSSH cannot execute the sh-based SSH_ASKPASS bridge — fail
+  // loudly with a clear message instead of a confusing auth failure.
+  if (password && process.platform === 'win32') {
+    return { exitCode: 2, stdout: '', stderr: 'password auth is not supported on Windows yet (SSH_ASKPASS shell bridge is POSIX-only) — use a private key instead' }
+  }
+  const opts = { timeout: timeoutMs, maxBuffer: CAPTURE_BUFFER, encoding: 'utf8' }
   if (password) {
     opts.env = { ...process.env, SSH_ASKPASS: ensureAskpassScript(), SSH_ASKPASS_REQUIRE: 'force', VPS_PASSWORD: password }
   }
@@ -99,6 +109,11 @@ async function run(bin, args, timeoutMs, password) {
     const { stdout, stderr } = await execFileAsync(bin, args, opts)
     return { exitCode: 0, stdout: stdout || '', stderr: stderr || '' }
   } catch (error) {
+    // output beyond maxBuffer hard-fails with ERR_CHILD_PROCESS_STDIO_MAXBUFFER —
+    // surface it as a truncation notice instead of a cryptic failure
+    if (error && (error.code === 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER' || /maxBuffer/i.test(String(error.message || '')))) {
+      return { exitCode: 0, stdout: truncate(error.stdout || '', 100000), stderr: truncate(error.stderr || '', 100000) + '\n[output exceeded capture buffer — truncated]' }
+    }
     return {
       exitCode: typeof error.code === 'number' ? error.code : 1,
       stdout: error.stdout || '',
@@ -111,20 +126,38 @@ async function run(bin, args, timeoutMs, password) {
 
 function loadData(config) {
   const file = dataFilePath(config)
+  let raw
   try {
-    const parsed = JSON.parse(fs.readFileSync(file, 'utf8'))
-    if (parsed && Array.isArray(parsed.targets)) return parsed
-  } catch {
-    /* missing or invalid → fresh ledger */
+    raw = fs.readFileSync(file, 'utf8')
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error
+    return { version: 1, targets: [], removedTargets: [], deletedConfigAliases: [] } // fresh ledger
   }
-  return { version: 1, targets: [], removedTargets: [], deletedConfigAliases: [] }
+  try {
+    const parsed = JSON.parse(raw)
+    if (parsed && Array.isArray(parsed.targets)) return parsed
+    throw new Error('ledger has no targets array')
+  } catch (error) {
+    // a corrupted ledger must never be silently reset to empty (data loss):
+    // back it up and fail loud instead
+    const backup = file + '.corrupt-' + Date.now()
+    try { fs.renameSync(file, backup) } catch { /* best effort */ }
+    throw new Error('ledger corrupted — backed up to ' + path.basename(backup) + ': ' + error.message)
+  }
 }
 
 function saveData(config, data) {
   const file = dataFilePath(config)
   fs.mkdirSync(path.dirname(file), { recursive: true })
-  const tmp = file + '.tmp-' + process.pid
-  fs.writeFileSync(tmp, JSON.stringify(data, null, 2), { mode: 0o600 })
+  // random suffix + 'wx' (no-clobber): concurrent writers can never interleave
+  // the same temp file, and a pre-planted symlink cannot be followed
+  const tmp = file + '.tmp-' + process.pid + '-' + randomBytes(6).toString('hex')
+  const fd = fs.openSync(tmp, 'wx', 0o600)
+  try {
+    fs.writeFileSync(fd, JSON.stringify(data, null, 2))
+  } finally {
+    fs.closeSync(fd)
+  }
   fs.renameSync(tmp, file)
 }
 
@@ -252,10 +285,10 @@ function listConfigCandidates() {
 
 // ── ssh/scp command construction ────────────────────────────────────────────
 
-function sshBaseOpts(t, connectTimeoutSec, usePassword) {
+function sshBaseOpts(t, connectTimeoutSec, usePassword, strictHostKeyChecking) {
   const opts = [
     '-o', `ConnectTimeout=${connectTimeoutSec}`,
-    '-o', 'StrictHostKeyChecking=accept-new',
+    '-o', strictHostKeyChecking ? 'StrictHostKeyChecking=yes' : 'StrictHostKeyChecking=accept-new',
   ]
   if (usePassword) {
     // password auth: no BatchMode, single prompt via SSH_ASKPASS
@@ -274,12 +307,12 @@ function sshDest(t) {
   return (t.username ? t.username + '@' : '') + t.host
 }
 
-function sshArgs(t, remoteCommand, connectTimeoutSec, usePassword) {
-  return [...sshBaseOpts(t, connectTimeoutSec, usePassword), sshDest(t), remoteCommand]
+function sshArgs(t, remoteCommand, connectTimeoutSec, usePassword, strictHostKeyChecking) {
+  return [...sshBaseOpts(t, connectTimeoutSec, usePassword, strictHostKeyChecking), sshDest(t), remoteCommand]
 }
 
-function scpArgs(t, localPath, remotePath, download, connectTimeoutSec, usePassword) {
-  const opts = ['-o', `ConnectTimeout=${connectTimeoutSec}`, '-o', 'StrictHostKeyChecking=accept-new']
+function scpArgs(t, localPath, remotePath, download, connectTimeoutSec, usePassword, strictHostKeyChecking) {
+  const opts = ['-o', `ConnectTimeout=${connectTimeoutSec}`, '-o', strictHostKeyChecking ? 'StrictHostKeyChecking=yes' : 'StrictHostKeyChecking=accept-new']
   if (usePassword) {
     opts.push('-o', 'NumberOfPasswordPrompts=1')
   } else {
@@ -287,11 +320,19 @@ function scpArgs(t, localPath, remotePath, download, connectTimeoutSec, usePassw
   }
   if (t.identityFile) opts.push('-o', 'IdentitiesOnly=yes', '-i', expandHome(t.identityFile))
   if (t.port && t.port !== 22) opts.push('-P', String(t.port))
+  // scp has no -J flag: proxy support goes through -o (same semantics as ssh)
+  if (t.jumpHost) opts.push('-o', `ProxyJump=${t.jumpHost}`)
+  if (t.proxyCommand) opts.push('-o', `ProxyCommand=${t.proxyCommand}`)
   const dest = sshDest(t)
   const src = download ? `${dest}:${remotePath}` : localPath
   const dst = download ? localPath : `${dest}:${remotePath}`
   return [...opts, src, dst]
 }
+
+// ProxyCommand is executed by ssh through the LOCAL shell — restrict values to
+// a safe token vocabulary (whitelist chars + %h/%p placeholders) to prevent
+// arbitrary local code execution via this field.
+const SAFE_PROXY_RE = /^[A-Za-z0-9_./+:=@%\-]+(?:\s+[A-Za-z0-9_./+:=@%\-]+)*$/
 
 /** Resolve the password for a target: explicit arg wins, else memory cache. */
 function resolvePassword(target, explicit) {
@@ -309,6 +350,7 @@ const OUTPUT = {
 function defineTools(ctx, config) {
   const connectTimeoutSec = config.connectTimeoutSec || 8
   const maxOutputBytes = config.maxOutputBytes || 100000
+  const strictHostKeyChecking = config.strictHostKeyChecking === true
 
   const findTarget = (data, id) => {
     const t = (data.targets || []).find((x) => x.id === id)
@@ -335,7 +377,7 @@ function defineTools(ctx, config) {
         if (args.withStatus) {
           for (const t of targets) {
             const start = Date.now()
-            const r = await run('ssh', sshArgs(t, 'true', connectTimeoutSec, !!resolvePassword(t)), 10000, resolvePassword(t))
+            const r = await run('ssh', sshArgs(t, 'true', connectTimeoutSec, !!resolvePassword(t), strictHostKeyChecking), connectTimeoutSec * 1000, resolvePassword(t))
             t.status = r.exitCode === 0 ? 'online' : 'offline'
             t.latencyMs = Date.now() - start
           }
@@ -362,7 +404,7 @@ function defineTools(ctx, config) {
 
     defineTool({
       name: 'vps_add',
-      description: 'Add a server to the VPS Hub ledger. Provide alias (import from ~/.ssh/config) or full manual fields; optionally test connectivity before saving. Auth options: identityFile (path reference), identityKeyContent (paste key CONTENT — saved privately to ~/.dsh/keys, never in the ledger), or password (kept in process memory only, never persisted — Orca-style; re-enter after a restart). Proxy options: jumpHost (ProxyJump) and proxyCommand.',
+      description: 'Add a server to the VPS Hub ledger. Provide alias (import from ~/.ssh/config) or full manual fields; optionally test connectivity before saving. Auth options: identityFile (path reference), identityKeyContent (paste key CONTENT — saved privately to ~/.dsh/keys, never in the ledger), or password (kept in process memory only, never persisted — Orca-style; re-enter after a restart). Proxy options: jumpHost (ProxyJump) and proxyCommand (executed by ssh through the LOCAL shell — whitelisted characters only, treat it as trusted code).',
       parameters: {
         label: { type: 'string', description: 'Display name, e.g. hk-prod' },
         alias: { type: 'string', description: 'Optional: Host alias from ~/.ssh/config; prefills other fields' },
@@ -393,7 +435,11 @@ function defineTools(ctx, config) {
           if (!args.host) throw new Error('host or alias is required')
           t = { host: String(args.host), port: args.port || 22, username: args.username, identityFile: args.identityFile, source: 'manual' }
           if (args.jumpHost) t.jumpHost = String(args.jumpHost)
-          if (args.proxyCommand) t.proxyCommand = String(args.proxyCommand)
+          if (args.proxyCommand) {
+            const pc = String(args.proxyCommand)
+            if (!SAFE_PROXY_RE.test(pc)) throw new Error('proxyCommand rejected: only whitelisted characters and %h/%p placeholders are allowed (it is executed by ssh through the local shell)')
+            t.proxyCommand = pc
+          }
         }
         if (args.label) t.label = String(args.label)
         if (args.tags) t.tags = args.tags.map(String)
@@ -441,6 +487,13 @@ function defineTools(ctx, config) {
         if (t.configHost) data.deletedConfigAliases = [...new Set([...(data.deletedConfigAliases || []), t.configHost])]
         saveData(config, data)
         passwordCache.delete(t.id)
+        // delete pasted-key files this target owned (only files under our keysDir)
+        if (t.identityFile) {
+          const abs = expandHome(t.identityFile)
+          if (abs.startsWith(keysDir())) {
+            try { fs.unlinkSync(abs) } catch { /* best effort */ }
+          }
+        }
         return { removed: t.id, label: t.label }
       },
     }),
@@ -459,7 +512,7 @@ function defineTools(ctx, config) {
         if (args.password) passwordCache.set(t.id, String(args.password))
         const pw = resolvePassword(t)
         const start = Date.now()
-        const r = await run('ssh', sshArgs(t, 'true', connectTimeoutSec, !!pw), 15000, pw)
+        const r = await run('ssh', sshArgs(t, 'true', connectTimeoutSec, !!pw, strictHostKeyChecking), 15000, pw)
         const ms = Date.now() - start
         if (r.exitCode === 0) {
           t.lastSeenAt = Date.now()
@@ -485,9 +538,11 @@ function defineTools(ctx, config) {
         const t = findTarget(data, args.id)
         if (args.password) passwordCache.set(t.id, String(args.password))
         const pw = resolvePassword(t)
-        const r = await run('ssh', sshArgs(t, args.command, connectTimeoutSec, !!pw), args.timeoutMs || 60000, pw)
-        t.lastSeenAt = Date.now()
-        saveData(config, data)
+        const r = await run('ssh', sshArgs(t, args.command, connectTimeoutSec, !!pw, strictHostKeyChecking), args.timeoutMs || 60000, pw)
+        if (r.exitCode === 0) {
+          t.lastSeenAt = Date.now()
+          saveData(config, data)
+        }
         return { ok: r.exitCode === 0, exitCode: r.exitCode, stdout: truncate(r.stdout, maxOutputBytes), stderr: truncate(r.stderr, maxOutputBytes) }
       },
     }),
@@ -507,7 +562,7 @@ function defineTools(ctx, config) {
         const t = findTarget(data, args.id)
         if (args.password) passwordCache.set(t.id, String(args.password))
         const pw = resolvePassword(t)
-        const r = await run('scp', scpArgs(t, args.localPath, args.remotePath, false, connectTimeoutSec, !!pw), 120000, pw)
+        const r = await run('scp', scpArgs(t, args.localPath, args.remotePath, false, connectTimeoutSec, !!pw, strictHostKeyChecking), 120000, pw)
         if (r.exitCode !== 0) throw new Error('upload failed: ' + truncate(r.stderr, 500))
         return { ok: true, to: `${t.host}:${args.remotePath}` }
       },
@@ -528,7 +583,7 @@ function defineTools(ctx, config) {
         const t = findTarget(data, args.id)
         if (args.password) passwordCache.set(t.id, String(args.password))
         const pw = resolvePassword(t)
-        const r = await run('scp', scpArgs(t, args.localPath, args.remotePath, true, connectTimeoutSec, !!pw), 120000, pw)
+        const r = await run('scp', scpArgs(t, args.localPath, args.remotePath, true, connectTimeoutSec, !!pw, strictHostKeyChecking), 120000, pw)
         if (r.exitCode !== 0) throw new Error('download failed: ' + truncate(r.stderr, 500))
         return { ok: true, from: `${t.host}:${args.remotePath}` }
       },

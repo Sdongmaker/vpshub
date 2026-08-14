@@ -95,7 +95,8 @@ export function apply(ctx) {
       if (form.label) a.label = form.label
       if (form.alias) a.alias = form.alias
       if (form.host) a.host = form.host
-      if (form.port) a.port = parseInt(form.port, 10)
+      const parsedPort = parseInt(form.port, 10)
+      if (form.port && Number.isFinite(parsedPort)) a.port = parsedPort
       if (form.username) a.username = form.username
       if (form.identityFile) a.identityFile = form.identityFile
       if (form.identityKeyContent) a.identityKeyContent = form.identityKeyContent
@@ -121,6 +122,7 @@ export function apply(ctx) {
 
     const doRemove = (id) => {
       if (!window.confirm('Remove this server from the ledger?')) return
+      setError(''); setMsg('')
       host.call('vps.remove', { id }).then((r) => {
         if (r && r.error) setError(r.error)
         else { setMsg('removed: ' + r.label); refresh() }
@@ -134,7 +136,9 @@ export function apply(ctx) {
         if (r && r.error) setError(r.error)
         else {
           setMsg(r.ok ? t.label + ' online (' + r.ms + 'ms)' : t.label + ' offline: ' + (r.error || 'connect failed'))
-          refresh()
+          // reflect the probe result on the card dot (status is otherwise
+          // only populated by vps.list withStatus)
+          setTargets((prev) => (prev || []).map((x) => (x.id === t.id ? { ...x, status: r.ok ? 'online' : 'offline' } : x)))
         }
       }).catch((e) => { setTesting((s) => ({ ...s, [t.id]: false })); setError(String(e)) })
     }
@@ -163,8 +167,8 @@ export function apply(ctx) {
           ))
 
     return h('div', { className: 'vpsh-wrap' },
-      error ? h('div', { className: 'vpsh-err' }, error) : null,
-      msg ? h('div', { className: 'vpsh-msg' }, msg) : null,
+      error ? h('div', { className: 'vpsh-err', role: 'alert' }, error) : null,
+      msg ? h('div', { className: 'vpsh-msg', role: 'status', 'aria-live': 'polite' }, msg) : null,
       h('div', { className: 'vpsh-hint' }, 'Server ledger (~/.dsh/vpshub-targets.json — keys stored as path references only, never transmitted)'),
       list,
       h('div', { className: 'vpsh-form' },

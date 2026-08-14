@@ -27,7 +27,7 @@
 
 ## Install
 
-> 📖 Full **Chinese step-by-step guide** (verification output, FAQ, upgrade/uninstall): [docs/INSTALL.zh.md](docs/INSTALL.zh.md)
+> 📖 Full **Chinese step-by-step guide** (verification output, FAQ, upgrade/uninstall): [docs/INSTALL.zh.md](https://github.com/Sdongmaker/vpshub/blob/main/docs/INSTALL.zh.md)
 
 ### Prerequisites
 
@@ -93,7 +93,7 @@ Cordis Plugin:
 4. Open **Settings → VPS Hub** — and the eight tools are live in the session.
 
 Dynamic plugins are session-scoped: they vanish when DSH restarts (the ledger
-file persists). Full instructions: [`examples/dynamic-plugin/README.md`](examples/dynamic-plugin/README.md).
+file persists). Full instructions: [`examples/dynamic-plugin/README.md`](https://github.com/Sdongmaker/vpshub/blob/main/examples/dynamic-plugin/README.md).
 
 ### Verification
 
@@ -182,8 +182,15 @@ stays clean.
 ## Security notes
 
 - Key-auth runs fully non-interactive (`BatchMode=yes`); password-auth runs with
-  `NumberOfPasswordPrompts=1` and `SSH_ASKPASS_REQUIRE=force`. Both use
-  `StrictHostKeyChecking=accept-new` (switch to `yes` for strict `known_hosts`).
+  `NumberOfPasswordPrompts=1` and `SSH_ASKPASS_REQUIRE=force`. Host-key policy defaults
+  to `accept-new`; enable `strictHostKeyChecking: true` in the plugin config for strict
+  `known_hosts` (MITM hardening).
+- **`proxyCommand` is executed by `ssh` through the LOCAL shell by design** — values are
+  restricted to a whitelist character set plus `%h`/`%p` placeholders; treat it as trusted code.
+- **Passwords ride the child environment** (`VPS_PASSWORD` via SSH_ASKPASS): same-user
+  processes on POSIX can read `/proc/<pid>/environ` — treat passwords as visible to
+  anything running as your user. Password mode is POSIX-only (Windows fails with a clear
+  message).
 - Passwords are memory-only and never written to disk; the askpass bridge script
   lives at `~/.dsh/.vpshub-askpass.sh` (0700) and reads the password from the
   child environment. Restarting DSH clears all cached passwords.
@@ -233,9 +240,18 @@ servers: import → add → list+status → test → exec → upload → downloa
 remove, plus the Settings-page UI loop (discover → test-connect → add →
 delete → alias prefill).
 
+## Security
+
+See [SECURITY.md](SECURITY.md) for the security model, hardening tips, and how to report a vulnerability.
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for the full version history.
+
 ## Known issue history
 
 - **v0.1.0 → v0.1.1 (breaking load fix)**: v0.1.0 read `ctx.config`, which the Cordis Guard rejects — the loader entry failed and took the whole Web process down. v0.1.1 uses the official `apply(ctx, config)` signature. If you are on v0.1.0, upgrade: `npm install dsh-vps-hub@latest`.
+- **v0.1.1 → v0.1.2 (YAML `null` config fix)**: a bare `config:` with only comments parses to `null` in YAML; the zod `Config` now tolerates `null` (`.nullish()`), and docs use `config: {}`.
 
 ## Limitations
 

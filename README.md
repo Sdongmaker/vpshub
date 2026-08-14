@@ -93,7 +93,15 @@ Cordis Plugin:
 4. Open **Settings → VPS Hub** — and the eight tools are live in the session.
 
 Dynamic plugins are session-scoped: they vanish when DSH restarts (the ledger
-file persists). Full instructions: [`examples/dynamic-plugin/README.md`](https://github.com/Sdongmaker/vpshub/blob/main/examples/dynamic-plugin/README.md).
+file persists).
+
+**Already installed the npm package? Use the UI-only overlay** — `ui-only-host.js`
++ `client.js` add just the Settings page (no tools, so no name collisions with
+the packaged tools). One-time client approval is required; if your deployment
+disables approvals, temporarily switch the session permission mode to
+`workspace-write`/`ask`, approve, then switch back.
+
+Full instructions: [`examples/dynamic-plugin/README.md`](https://github.com/Sdongmaker/vpshub/blob/main/examples/dynamic-plugin/README.md).
 
 ### Verification
 

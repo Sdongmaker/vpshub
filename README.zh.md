@@ -89,7 +89,11 @@ npm uninstall dsh-vps-hub             # 卸载 —— 同时删除 cordis.patch.
 3. `cordis_run` 并批准 client 半部分(一次性 UI 授权)。
 4. 打开 **设置 → VPS Hub** —— 8 个工具同时在本会话生效。
 
-动态插件是会话级的:DSH 重启后消失(台账文件保留)。完整说明见 [`examples/dynamic-plugin/README.md`](https://github.com/Sdongmaker/vpshub/blob/main/examples/dynamic-plugin/README.md)。
+动态插件是会话级的:DSH 重启后消失(台账文件保留)。
+
+**已安装 npm 包?用 UI-only 叠加版** —— `ui-only-host.js` + `client.js` 只增加设置页(不注册工具,与正式包工具不冲突)。客户端需一次性批准;若部署禁用了审批,请临时将会话权限模式切到 `workspace-write`/`ask`,批准后再切回。
+
+完整说明见 [`examples/dynamic-plugin/README.md`](https://github.com/Sdongmaker/vpshub/blob/main/examples/dynamic-plugin/README.md)。
 
 ### 验证安装
 

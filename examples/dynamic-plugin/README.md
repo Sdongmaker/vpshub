@@ -41,3 +41,32 @@ plugin, so both modes interoperate. Keys stay path references only.
 > Note: dynamic plugins are session-scoped and vanish on DSH restart (the
 > ledger file persists). For a permanent install, use the npm package instead —
 > see the repository README.
+## Two ways to use these files
+
+**A. Full dynamic plugin (standalone — tools + UI, no npm install)**
+Use `host.js` + `client.js`. The session gets both the eight `vps_*` tools
+AND the Settings UI. Do NOT also mount the npm package in the same session —
+tool names would collide.
+
+**B. UI-only overlay (recommended when the npm package is installed)**
+Use `ui-only-host.js` + `client.js`. The npm package keeps serving the tools;
+this overlay adds ONLY the Settings → VPS Hub page and its RPC handlers, so
+both coexist. Steps:
+
+1. `cordis_define`:
+   - `code.host`: paste `apply()`'s body from `ui-only-host.js` as
+     `return { name: 'vps-hub-ui-rpc', apply: <body> }`
+   - `code.client`: paste `apply()`'s body from `client.js` as
+     `return { name: 'vps-hub-ui', apply: <body> }`
+2. `cordis_run` and approve the client half once.
+3. Settings → VPS Hub.
+
+### Approval policy note
+
+The client half needs a one-time approval. If your deployment runs with
+approval disabled (`DSH_PERMISSION_MODE=danger-full-access` / policy
+`never`), dynamic client plugins cannot be authorized — switch the session
+permission mode to `workspace-write` (Settings → 权限 → ask) or set
+`DSH_PERMISSION_MODE=ask` for the session where you load the UI, approve,
+then switch back. The ledger and tools are unaffected.
+

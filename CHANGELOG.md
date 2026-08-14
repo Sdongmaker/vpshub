@@ -2,6 +2,18 @@
 
 All notable changes to **dsh-vps-hub** are documented here. Versions follow [SemVer](https://semver.org/).
 
+## [0.1.8] — 2026-08-14
+
+### Fixed (audit round: two more P0 collateral sites from the t→tr rename)
+- **`set(` → `setr(`**: the same global replace that broke `ctx.get` in 0.1.6
+  also hit all eleven `onChange: set('field')` form handlers — every form
+  field in the Settings UI threw ReferenceError. Restored all 11 sites.
+- **`slots.inject(` → `slots.injectr(`**: the settings-section registration
+  itself was broken by the same collateral — restored.
+- Added a systematic identifier scan (`[a-zA-Z]+r\('`) and a mock-render
+  verification (function-component deep render with mocked React/host/locale)
+  so this class of silent rename damage cannot ship again.
+
 ## [0.1.7] — 2026-08-14
 
 ### Fixed (issues #11–#13)

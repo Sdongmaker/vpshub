@@ -27,50 +27,88 @@
 
 ## 安装
 
-### 方式 A —— 正式安装(推荐,Agent 工具面)
+> 📖 完整**中文图文安装指南**(验证输出、常见问题、升级/卸载):[docs/INSTALL.zh.md](docs/INSTALL.zh.md)
 
-插件已发布到 npm([`dsh-vps-hub`](https://www.npmjs.com/package/dsh-vps-hub)),是 host 平面 Cordis 插件。安装到 DSH profile 的 `node_modules`,然后在 profile 的 `cordis.patch.yml` 加一行:
+### 环境要求(Prerequisites)
+
+- macOS / Linux,系统 `ssh`、`scp` 在 `PATH` 中(暂不支持 Windows)
+- DSH 0.1.0-rc.x,使用 **web** profile
+- 可写的 DSH profile 目录(如 `~/.dsh/profiles/web`)
+- 至少一台可用 SSH 登录的服务器(密钥认证,或按会话提供密码)
+
+### 方式 A —— npm 包(正式安装,Agent 工具面)
+
+**第 1 步:安装到你的 DSH profile:**
 
 ```bash
-# 在 DSH profile 目录下(如 ~/.dsh/profiles/web)
-npm install dsh-vps-hub
-# 或: pnpm add dsh-vps-hub
+cd ~/.dsh/profiles/web          # 你的 profile 目录
+npm install dsh-vps-hub         # 或: pnpm add dsh-vps-hub
 ```
 
+**第 2 步:在 `cordis.patch.yml` 中挂载**(profile 根目录,如 `~/.dsh/profiles/web/cordis.patch.yml`):
+
 ```yaml
-# cordis.patch.yml(profile 根目录,如 ~/.dsh/profiles/web/cordis.patch.yml)
 - insert:
     - id: vps-hub
       name: 'dsh-vps-hub'
+      # 以下均为可选配置,缺省即可用:
       config:
-        # dataFile: '~/.dsh/vpshub-targets.json'   # 可选:台账路径覆盖
-        # maxOutputBytes: 100000                    # 可选:输出上限
-        # connectTimeoutSec: 8                      # 可选:连接超时
+        # dataFile: '~/.dsh/vpshub-targets.json'   # 台账文件路径覆盖
+        # maxOutputBytes: 100000                    # 单条命令输出上限(字节)
+        # connectTimeoutSec: 8                      # ssh/scp 连接超时(秒)
 ```
 
-重启(HMR 重载)profile,Agent 即获得 8 个 `vps_*` 工具。
+**第 3 步:重启(HMR 重载)profile**,然后按下方"验证安装"确认。
 
 > **为什么改 `cordis.patch.yml` 而不是 `cordis.yml`?** profile 根 `cordis.yml` 是
 > 一个空列表,由补丁层组合而成 —— 请编辑补丁文件,不要动根文件。
 
-### 方式 B —— 动态插件(增加设置页 UI,会话级)
+**配置项:**
+
+| 字段 | 类型 | 默认值 | 说明 |
+|---|---|---|---|
+| `dataFile` | string | `~/.dsh/vpshub-targets.json` | 台账 JSON 路径覆盖 |
+| `maxOutputBytes` | number | `100000` | 返回给模型的单条命令输出上限 |
+| `connectTimeoutSec` | number | `8` | ssh/scp 连接超时(秒) |
+
+**升级 / 卸载:**
+
+```bash
+npm update dsh-vps-hub                # 升级
+npm install dsh-vps-hub@latest        # 显式升级
+npm uninstall dsh-vps-hub             # 卸载 —— 同时删除 cordis.patch.yml 中的挂载行
+```
+
+### 方式 B —— 动态插件(会话级,含设置页 UI)
 
 想要 **设置 → VPS Hub 页面** 而暂不安装包(或先试用 UI),可加载已验证的示例动态插件:
 
 1. 打开 `examples/dynamic-plugin/` —— `host.js`(工具 + RPC)与 `client.js`(设置页 UI)。
 2. 调用 `cordis_define`:把 `host.js` 中 `apply()` 的函数体粘贴进 `code.host`(`return { name: 'vps-hub', apply: <函数体> }`),把 `client.js` 的函数体粘贴进 `code.client`(`return { name: 'vps-hub-ui', apply: <函数体> }`)。
-3. `cordis_run` 并批准 client 半部分。
+3. `cordis_run` 并批准 client 半部分(一次性 UI 授权)。
 4. 打开 **设置 → VPS Hub** —— 8 个工具同时在本会话生效。
 
 动态插件是会话级的:DSH 重启后消失(台账文件保留)。完整说明见 [`examples/dynamic-plugin/README.md`](examples/dynamic-plugin/README.md)。
+
+### 验证安装
+
+方式 A 安装完成后,任选一种方式确认:
+
+```bash
+# 1) Agent 能看到工具 —— 在会话中直接问:"列出我的服务器"
+# 2) 仓库冒烟测试(读取你的真实台账,需克隆仓库):
+node examples/smoke.mjs
+# 3) 首次 vps_add / vps_test 后台账文件出现:
+ls -l ~/.dsh/vpshub-targets.json
+```
+
+预期结果:`vps_list` 返回你的服务器(或空列表);`vps_exec` 能在服务器上执行只读命令(如 `hostname`);方式 B 下设置页显示台账。
 
 ### 环境要求
 
 - macOS / Linux(需要系统 `ssh`、`scp`;暂不支持 Windows)
 - DSH 0.1.0-rc.x(web profile)
-- 私钥认证(刻意不支持密码认证)
-
----
+- 密钥认证,或按会话提供密码(仅内存)
 
 ## 快速开始
 
@@ -144,6 +182,7 @@ npm install dsh-vps-hub
 ```
 dsh-vps-hub/
 ├── docs/
+│   ├── INSTALL.zh.md        # full Chinese install guide
 │   └── PLUGIN-DEV-GUIDE.md   # 插件开发→测试→发布实战指南(本项目真实经验沉淀)
 ├── src/
 │   └── index.js              # 正式包 host 插件(execFile 实现)

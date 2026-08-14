@@ -27,33 +27,59 @@
 
 ## Install
 
-### Option A — permanent install (recommended, model tools only)
+> 📖 Full **Chinese step-by-step guide** (verification output, FAQ, upgrade/uninstall): [docs/INSTALL.zh.md](docs/INSTALL.zh.md)
 
-The plugin is published on npm as [`dsh-vps-hub`](https://www.npmjs.com/package/dsh-vps-hub) and is a host-plane Cordis plugin. Install it into your DSH profile's `node_modules`, then add one row to the profile's `cordis.patch.yml`:
+### Prerequisites
+
+- macOS / Linux with system `ssh` and `scp` on `PATH` (Windows not supported yet)
+- DSH 0.1.0-rc.x with the **web** profile
+- A writable DSH profile directory (e.g. `~/.dsh/profiles/web`)
+- SSH access to at least one server (key-based, or a password you can provide per session)
+
+### Option A — npm package (permanent, agent tools)
+
+**Step 1 — install into your DSH profile:**
 
 ```bash
-# from your DSH profile directory (e.g. ~/.dsh/profiles/web)
-npm install dsh-vps-hub
-# or: pnpm add dsh-vps-hub
+cd ~/.dsh/profiles/web          # your profile directory
+npm install dsh-vps-hub         # or: pnpm add dsh-vps-hub
 ```
 
+**Step 2 — mount it in `cordis.patch.yml`** (the profile root, e.g. `~/.dsh/profiles/web/cordis.patch.yml`):
+
 ```yaml
-# cordis.patch.yml  (profile root, e.g. ~/.dsh/profiles/web/cordis.patch.yml)
 - insert:
     - id: vps-hub
       name: 'dsh-vps-hub'
+      # optional config (all fields have sensible defaults):
       config:
-        # dataFile: '~/.dsh/vpshub-targets.json'   # optional ledger override
-        # maxOutputBytes: 100000                    # optional output cap
-        # connectTimeoutSec: 8                      # optional connect timeout
+        # dataFile: '~/.dsh/vpshub-targets.json'   # ledger path override
+        # maxOutputBytes: 100000                    # per-command output cap (bytes)
+        # connectTimeoutSec: 8                      # ssh/scp connect timeout (s)
 ```
 
-Restart (or HMR-reload) the profile. The agent now has the eight `vps_*` tools.
+**Step 3 — restart (or HMR-reload) the profile**, then verify (see [Verification](#verification)).
 
 > **Why `cordis.patch.yml` and not `cordis.yml`?** The profile root `cordis.yml` is
 > an empty list composed as patches — edit the patch file, never the root.
 
-### Option B — dynamic plugin (adds the Settings-page UI, session-scoped)
+**Configuration:**
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `dataFile` | string | `~/.dsh/vpshub-targets.json` | Ledger JSON path override |
+| `maxOutputBytes` | number | `100000` | Per-command output cap returned to the model |
+| `connectTimeoutSec` | number | `8` | ssh/scp connect timeout in seconds |
+
+**Upgrade / uninstall:**
+
+```bash
+npm update dsh-vps-hub                # upgrade
+npm install dsh-vps-hub@latest        # upgrade (explicit)
+npm uninstall dsh-vps-hub             # uninstall — also remove the row from cordis.patch.yml
+```
+
+### Option B — dynamic plugin (session-scoped, adds the Settings-page UI)
 
 If you want the **Settings → VPS Hub page** without installing the package
 (or to try the UI first), load the verified example as a session dynamic
@@ -63,19 +89,33 @@ Cordis Plugin:
 2. Call `cordis_define`: paste `apply()`'s body from `host.js` into `code.host`
    as `return { name: 'vps-hub', apply: <body> }`, and the body from `client.js`
    into `code.client` as `return { name: 'vps-hub-ui', apply: <body> }`.
-3. `cordis_run` and approve the client half.
+3. `cordis_run` and approve the client half (one-time UI approval).
 4. Open **Settings → VPS Hub** — and the eight tools are live in the session.
 
 Dynamic plugins are session-scoped: they vanish when DSH restarts (the ledger
 file persists). Full instructions: [`examples/dynamic-plugin/README.md`](examples/dynamic-plugin/README.md).
 
+### Verification
+
+After Option A, confirm the install in any of these ways:
+
+```bash
+# 1) the agent sees the tools — in a session ask: "list my servers"
+# 2) repo smoke test against your real ledger (needs the repo):
+node examples/smoke.mjs
+# 3) the ledger file appears after the first vps_add / vps_test:
+ls -l ~/.dsh/vpshub-targets.json
+```
+
+Expected: `vps_list` returns your servers (or an empty list), `vps_exec` runs a
+read-only command like `hostname` on a server, and Settings shows the ledger
+(Option B).
+
 ### Requirements
 
 - macOS / Linux (system `ssh`, `scp` on `PATH`; Windows is not supported yet)
 - DSH 0.1.0-rc.x with the web profile
-- Private-key authentication (password auth unsupported by design)
-
----
+- Key-based auth, or password provided per session (memory-only)
 
 ## Quick start
 
@@ -163,6 +203,7 @@ stays clean.
 ```
 dsh-vps-hub/
 ├── docs/
+│   ├── INSTALL.zh.md        # full Chinese install guide
 │   └── PLUGIN-DEV-GUIDE.md   # plugin dev → test → publish playbook (from this project's real experience)
 ├── src/
 │   └── index.js              # packaged host plugin (execFile-based)

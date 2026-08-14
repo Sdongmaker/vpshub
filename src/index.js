@@ -596,12 +596,29 @@ function defineTools(ctx, config) {
   ]
 }
 
+// Recursively normalize tool results to lossless JSON (undefined → null):
+// the tools registry rejects non-JSON values (e.g. `testResult: undefined` on
+// a no-test vps_add, or undefined optional fields in config candidates).
+function clean(v) {
+  if (v === undefined) return null
+  if (Array.isArray(v)) return v.map(clean)
+  if (v && typeof v === 'object') {
+    const o = {}
+    for (const k of Object.keys(v)) o[k] = clean(v[k])
+    return o
+  }
+  return v
+}
+
 export function apply(ctx, config) {
   // config arrives as the second argument from the Cordis loader (official
   // pattern, e.g. @deepseek-ai/dsh-mcp-client). NEVER read ctx.config — the
   // Cordis Guard rejects undeclared ctx properties and kills the whole app.
   const cfg = config || {}
   for (const tool of defineTools(ctx, cfg)) {
-    ctx.tools.register(tool)
+    ctx.tools.register({
+      ...tool,
+      execute: async (args) => clean(await tool.execute(args)),
+    })
   }
 }

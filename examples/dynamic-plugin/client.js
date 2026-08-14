@@ -24,7 +24,7 @@
  * delete → alias prefill, all through the Settings UI.
  */
 export function apply(ctx) {
-  const slots = ctx.getr('slots')
+  const slots = ctx.get('slots')
   if (slots === undefined) return
 
   styles.insert(`
@@ -95,7 +95,7 @@ export function apply(ctx) {
     confirmRemove: '确定从台账删除这台服务器?',
     added: '已添加: ', removed: '已删除: ', online: ' 在线 (', offline: ' 离线: ', connectFailed: '连接失败',
   }
-  const locale = ctx.getr('locale')
+  const locale = ctx.get('locale')
   let tr = (k) => k
   if (locale !== undefined) {
     try {

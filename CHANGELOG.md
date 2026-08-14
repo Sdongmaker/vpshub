@@ -2,6 +2,18 @@
 
 All notable changes to **dsh-vps-hub** are documented here. Versions follow [SemVer](https://semver.org/).
 
+## [0.1.7] — 2026-08-14
+
+### Fixed (issues #11–#13)
+- **#11 [P0] `t→tr` rename collateral**: the global replace of `t('` also
+  hit `ctx.get('` → `ctx.getr('` in the Settings UI — the page could not
+  load at all in 0.1.6. Restored `ctx.get` (2 sites).
+- **#12 [P1] non-lossless tool result**: `vps_add` without `test` returned
+  `testResult: undefined`; tool results are now normalized through `clean()`
+  (undefined → null) at registration — affected every version since 0.1.0.
+- **#13 [P1] candidates with undefined fields**: `vps_import_ssh_config`
+  returned optional fields as `undefined`; now covered by the same `clean()`.
+
 ## [0.1.6] — 2026-08-14
 
 ### Fixed (issues #6–#10)

@@ -195,4 +195,4 @@ npm uninstall dsh-vps-hub
 
 ---
 
-*指南版本:v0.1.2 · 与 npm 包 `dsh-vps-hub@0.1.2` 同步*
+*指南版本:v0.1.3 · 与 npm 包 `dsh-vps-hub@0.1.3` 同步*

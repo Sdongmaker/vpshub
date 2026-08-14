@@ -38,5 +38,9 @@
   },
   "engines": {
     "node": ">=18"
+  },
+  "homepage": "https://github.com/Sdongmaker/vpshub#readme",
+  "bugs": {
+    "url": "https://github.com/Sdongmaker/vpshub/issues"
   }
 }

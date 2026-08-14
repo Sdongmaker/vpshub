@@ -233,6 +233,10 @@ servers: import → add → list+status → test → exec → upload → downloa
 remove, plus the Settings-page UI loop (discover → test-connect → add →
 delete → alias prefill).
 
+## Known issue history
+
+- **v0.1.0 → v0.1.1 (breaking load fix)**: v0.1.0 read `ctx.config`, which the Cordis Guard rejects — the loader entry failed and took the whole Web process down. v0.1.1 uses the official `apply(ctx, config)` signature. If you are on v0.1.0, upgrade: `npm install dsh-vps-hub@latest`.
+
 ## Limitations
 
 - Windows not supported (requires system `ssh`/`scp`).

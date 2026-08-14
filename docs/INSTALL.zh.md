@@ -176,6 +176,11 @@ npm uninstall dsh-vps-hub
 **Q7:方式 A 和方式 B 会冲突吗**
 - 不会:共用同一台账文件与同一套 `vps_*` 工具名;同会话同时启用会导致工具重名注册失败,二选一即可。
 
+**Q9:加载即崩溃,报 `cannot get property "config" without inject`(Web UI 起不来)**
+- 这是 **v0.1.0 的已知缺陷**:插件错误地读取 `ctx.config`(Cordis Guard 拒绝未声明的 ctx 属性,导致整个 Web 进程退出)。
+- **修复:升级到 v0.1.1+** —— `npm install dsh-vps-hub@latest`(v0.1.1 改为官方 `apply(ctx, config)` 签名,不再访问 `ctx.config`)。
+- 确认版本:`npm ls dsh-vps-hub`。
+
 **Q8:粘贴的密钥保存在哪**
 - `~/.dsh/keys/<id>.key`(0600,目录 0700),台账只存路径;删除服务器不会自动删除密钥文件,可手动清理。
 

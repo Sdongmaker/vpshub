@@ -208,6 +208,10 @@ node examples/smoke.mjs   # 在假 ctx 上注册工具、读取真实台账、�
 
 核心逻辑已在真实 DSH 会话中对真实服务器做过端到端验证:导入 → 添加 → 列表+状态 → 测试 → 执行 → 上传 → 下载 → 删除,以及设置页 UI 全流程(发现 → 测试连接 → 添加 → 删除 → 别名预填)。
 
+## 版本历史
+
+- **v0.1.0 → v0.1.1(加载崩溃修复)**:v0.1.0 读取 `ctx.config` 被 Cordis Guard 拒绝,导致 loader entry 失败、整个 Web 进程退出。v0.1.1 改用官方 `apply(ctx, config)` 签名。若你仍在使用 v0.1.0,请升级:`npm install dsh-vps-hub@latest`。
+
 ## 已知限制
 
 - 暂不支持 Windows(依赖系统 `ssh`/`scp`)。

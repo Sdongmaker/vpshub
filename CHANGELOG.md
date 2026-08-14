@@ -2,6 +2,33 @@
 
 All notable changes to **dsh-vps-hub** are documented here. Versions follow [SemVer](https://semver.org/).
 
+## [0.1.5] — 2026-08-14
+
+### Fixed (issues #2–#5 review round)
+- **`src/index.js`**
+  - `vps_import_ssh_config` keeps the FULL proxyCommand line for imported
+    aliases (was truncated to the first token); imported proxyCommand is now
+    validated against the safe whitelist too (#4-1).
+  - `vps_add` connectivity test now honors `strictHostKeyChecking` (#4-2).
+  - `vps_remove` key cleanup checks a real path-separator boundary — sibling
+    dirs like `~/.dsh/keys2/…` can no longer match (#4-3).
+- **Settings UI (`client.js`)**
+  - Fixed the Key-path form-row nesting bug for real (rows are now siblings;
+    the 0.1.3 changelog entry claiming this fix was wrong — it never landed).
+  - `vps.candidates` failures are surfaced instead of silently swallowed (#5-1).
+  - **i18n**: zh/en dictionaries registered through the harness `locale`
+    service; all UI strings go through `t()`; the settings section label
+    follows the active locale (`VPS Hub` ↔ `VPS 服务器`) (#2). Without a
+    locale service the UI falls back to English keys.
+- **Dynamic examples**
+  - `ui-only-host.js` regenerated from the fixed host half (DSH_HOME honored;
+    the 0.1.3 changelog claim was wrong for this file).
+  - Both host halves documented as POSIX-only (#3-1).
+- **Docs**: platform notes corrected — Windows works for key-based auth with
+  the packaged plugin; password auth and the dynamic examples are POSIX-only
+  (#3-2). CHANGELOG 0.1.3 entries that claimed fixes that never landed are
+  corrected here.
+
 ## [0.1.4] — 2026-08-14
 
 ### Docs

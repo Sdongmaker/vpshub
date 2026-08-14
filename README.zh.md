@@ -31,7 +31,7 @@
 
 ### 环境要求(Prerequisites)
 
-- macOS / Linux,系统 `ssh`、`scp` 在 `PATH` 中(暂不支持 Windows)
+- macOS / Linux,系统 `ssh`、`scp`;**Windows 支持密钥认证**(OpenSSH Client;密码认证仅 POSIX —— SSH_ASKPASS 桥接为 shell 脚本)。动态插件示例仅 POSIX。
 - DSH 0.1.0-rc.x,使用 **web** profile
 - 可写的 DSH profile 目录(如 `~/.dsh/profiles/web`)
 - 至少一台可用 SSH 登录的服务器(密钥认证,或按会话提供密码)

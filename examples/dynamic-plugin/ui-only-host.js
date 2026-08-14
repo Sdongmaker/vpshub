@@ -1,12 +1,16 @@
 /**
  * dsh-vps-hub — dynamic-plugin Host half, **UI-only mode (RPC only)**.
  *
+ * ⚠️ POSIX-only (uses sh-style shell commands through the shell service).
+ * On Windows use the packaged npm plugin; the dynamic UI overlay is not
+ * available there yet.
+ *
  * Use THIS file when the packaged plugin (npm `dsh-vps-hub`) is already
  * installed and provides the eight vps_* tools: this half registers ONLY the
  * five Settings-page RPC handlers (vps.list/candidates/add/remove/test) and
  * registers NO tools, so it coexists with the packaged plugin without tool
  * name conflicts. The Settings UI reads and writes the SAME ledger
- * (~/.dsh/vpshub-targets.json) the packaged plugin uses.
+ * (~/.dsh/vpshub-targets.json, honoring ${DSH_HOME}) the packaged plugin uses.
  *
  * Usage (inside a DSH session with dynamic-plugin support):
  *   1. Call cordis_define; in code.host write:
@@ -360,4 +364,5 @@ export function apply(ctx) {
     }
     return { ok: false, ms, host: t.host, error: truncate(out(r.stderr) || out(r.stdout), 500) }
   }))
+
 }

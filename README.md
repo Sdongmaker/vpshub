@@ -31,7 +31,7 @@
 
 ### Prerequisites
 
-- macOS / Linux with system `ssh` and `scp` on `PATH` (Windows not supported yet)
+- macOS / Linux with system `ssh`/`scp`; **Windows works for key-based auth** (OpenSSH client; password auth is POSIX-only — the SSH_ASKPASS bridge is a shell script). The dynamic-plugin examples are POSIX-only.
 - DSH 0.1.0-rc.x with the **web** profile
 - A writable DSH profile directory (e.g. `~/.dsh/profiles/web`)
 - SSH access to at least one server (key-based, or a password you can provide per session)

@@ -276,7 +276,7 @@ function listConfigCandidates() {
         username: firstToken(fields.user) || undefined,
         identityFile: firstToken(fields.identityfile) || undefined,
         proxyJump: firstToken(fields.proxyjump) || undefined,
-        proxyCommand: firstToken(fields.proxycommand) || undefined,
+        proxyCommand: (fields.proxycommand || '').trim() || undefined,
       })
     }
   }
@@ -430,6 +430,7 @@ function defineTools(ctx, config) {
           if (!c) throw new Error(`alias ${args.alias} not found in ~/.ssh/config — run vps_import_ssh_config first`)
           t = { configHost: c.alias, host: c.hostname, port: c.port, username: c.username, identityFile: c.identityFile, jumpHost: c.proxyJump, proxyCommand: c.proxyCommand, source: 'ssh-config' }
           const dup = (data.targets || []).find((x) => x.configHost === c.alias)
+          if (t.proxyCommand && !SAFE_PROXY_RE.test(t.proxyCommand)) throw new Error(`proxyCommand from alias ${c.alias} rejected: only whitelisted characters and %h/%p placeholders are allowed`)
           if (dup) throw new Error(`alias ${c.alias} is already in the ledger (id=${dup.id})`)
         } else {
           if (!args.host) throw new Error('host or alias is required')
@@ -457,7 +458,7 @@ function defineTools(ctx, config) {
         }
 
         if (args.test) {
-          const r = await run('ssh', sshArgs(target, 'true', connectTimeoutSec, !!resolvePassword(target)), 15000, resolvePassword(target))
+          const r = await run('ssh', sshArgs(target, 'true', connectTimeoutSec, !!resolvePassword(target), strictHostKeyChecking), 15000, resolvePassword(target))
           target.lastSeenAt = r.exitCode === 0 ? Date.now() : undefined
           target.testResult = r.exitCode === 0 ? 'ok' : 'failed: ' + truncate(r.stderr || r.stdout, 300)
         }
@@ -490,7 +491,8 @@ function defineTools(ctx, config) {
         // delete pasted-key files this target owned (only files under our keysDir)
         if (t.identityFile) {
           const abs = expandHome(t.identityFile)
-          if (abs.startsWith(keysDir())) {
+          // path-separator boundary: only files directly under keysDir are ours
+          if (abs.startsWith(keysDir() + path.sep)) {
             try { fs.unlinkSync(abs) } catch { /* best effort */ }
           }
         }

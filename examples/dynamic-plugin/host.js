@@ -1,6 +1,9 @@
 /**
  * dsh-vps-hub — dynamic-plugin Host half (shell-service based).
  *
+ * ⚠️ POSIX-only (sh-style commands through the shell service). On Windows use
+ * the packaged npm plugin; the dynamic UI overlay is not available there yet.
+ *
  * This file is the Host half used with `cordis_define` when you want the
  * Settings-page UI without installing the package. It registers the eight
  * model tools AND the Package-private RPC handlers the Settings page calls.

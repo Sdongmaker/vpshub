@@ -24,7 +24,7 @@
  * delete → alias prefill, all through the Settings UI.
  */
 export function apply(ctx) {
-  const slots = ctx.get('slots')
+  const slots = ctx.getr('slots')
   if (slots === undefined) return
 
   styles.insert(`
@@ -95,13 +95,13 @@ export function apply(ctx) {
     confirmRemove: '确定从台账删除这台服务器?',
     added: '已添加: ', removed: '已删除: ', online: ' 在线 (', offline: ' 离线: ', connectFailed: '连接失败',
   }
-  const locale = ctx.get('locale')
-  let t = (k) => k
+  const locale = ctx.getr('locale')
+  let tr = (k) => k
   if (locale !== undefined) {
     try {
       locale.register('vps-hub', 'en', DICT_EN)
       locale.register('vps-hub', 'zh', DICT_ZH)
-      t = locale.bind('vps-hub')
+      tr = locale.bind('vps-hub')
     } catch { /* duplicate registration or unavailable → raw keys are English */ }
   }
 
@@ -166,18 +166,18 @@ export function apply(ctx) {
       host.call('vps.add', collectArgs()).then((r) => {
         setBusy(false)
         if (r && r.error) { setError(r.error); return }
-        setMsg(t('added') + (r.label || r.id) + (r.testResult ? ' (' + r.testResult + ')' : ''))
+        setMsg(tr('added') + (r.label || r.id) + (r.testResult ? ' (' + r.testResult + ')' : ''))
         setForm({ label: '', alias: '', host: '', port: '22', username: '', identityFile: '', identityKeyContent: '', password: '', jumpHost: '', proxyCommand: '', tags: '', note: '', test: false })
         refresh()
       }).catch((e) => { setBusy(false); setError(String(e)) })
     }
 
     const doRemove = (id) => {
-      if (!window.confirm(t('confirmRemove'))) return
+      if (!window.confirm(tr('confirmRemove'))) return
       setError(''); setMsg('')
       host.call('vps.remove', { id }).then((r) => {
         if (r && r.error) setError(r.error)
-        else { setMsg(t('removed') + r.label); refresh() }
+        else { setMsg(tr('removed') + r.label); refresh() }
       }).catch((e) => setError(String(e)))
     }
 
@@ -187,7 +187,7 @@ export function apply(ctx) {
         setTesting((s) => ({ ...s, [t.id]: false }))
         if (r && r.error) setError(r.error)
         else {
-          setMsg(r.ok ? t.label + t('online') + r.ms + 'ms)' : t.label + t('offline') + (r.error || t('connectFailed')))
+          setMsg(r.ok ? t.label + tr('online') + r.ms + 'ms)' : t.label + tr('offline') + (r.error || tr('connectFailed')))
           // reflect the probe result on the card dot (status is otherwise
           // only populated by vps.list withStatus)
           setTargets((prev) => (prev || []).map((x) => (x.id === t.id ? { ...x, status: r.ok ? 'online' : 'offline' } : x)))
@@ -198,9 +198,9 @@ export function apply(ctx) {
     const statusDot = (t) => h('span', { className: 'vpsh-dot ' + (t.status === 'online' ? 'vpsh-online' : t.status === 'offline' ? 'vpsh-offline' : 'vpsh-unknown') })
 
     const list = targets === null
-      ? h('div', { className: 'vpsh-muted' }, t('loading'))
+      ? h('div', { className: 'vpsh-muted' }, tr('loading'))
       : targets.length === 0
-        ? h('div', { className: 'vpsh-muted' }, t('emptyLedger'))
+        ? h('div', { className: 'vpsh-muted' }, tr('emptyLedger'))
         : h('div', { style: { display: 'flex', flexDirection: 'column', gap: 8 } }, targets.map((t) =>
             h('div', { key: t.id, className: 'vpsh-card' },
               h('div', { className: 'vpsh-card-head' },
@@ -210,89 +210,89 @@ export function apply(ctx) {
                 h('span', { className: 'vpsh-badge' }, t.source === 'ssh-config' ? 'ssh-config' : 'manual'),
                 (t.tags || []).map((g) => h('span', { key: g, className: 'vpsh-badge' }, g)),
                 h('span', { style: { flex: 1 } }),
-                h('button', { className: 'vpsh-btn', disabled: !!testing[t.id], onClick: () => doTest(t) }, testing[t.id] ? t('testing') : t('testBtn')),
-                h('button', { className: 'vpsh-btn vpsh-btn-danger', onClick: () => doRemove(t.id) }, t('removeBtn')),
+                h('button', { className: 'vpsh-btn', disabled: !!testing[t.id], onClick: () => doTest(t) }, testing[t.id] ? tr('testing') : tr('testBtn')),
+                h('button', { className: 'vpsh-btn vpsh-btn-danger', onClick: () => doRemove(t.id) }, tr('removeBtn')),
               ),
               t.note ? h('div', { className: 'vpsh-hint' }, t.note) : null,
-              t.lastSeenAt ? h('div', { className: 'vpsh-hint' }, t('lastOnline') + new Date(t.lastSeenAt).toLocaleString()) : null,
+              t.lastSeenAt ? h('div', { className: 'vpsh-hint' }, tr('lastOnline') + new Date(t.lastSeenAt).toLocaleString()) : null,
             )
           ))
 
     return h('div', { className: 'vpsh-wrap' },
       error ? h('div', { className: 'vpsh-err', role: 'alert' }, error) : null,
       msg ? h('div', { className: 'vpsh-msg', role: 'status', 'aria-live': 'polite' }, msg) : null,
-      h('div', { className: 'vpsh-hint' }, t('ledgerHint')),
+      h('div', { className: 'vpsh-hint' }, tr('ledgerHint')),
       list,
       h('div', { className: 'vpsh-form' },
         h('div', { className: 'vpsh-row' },
-          h('strong', null, t('addServer')),
-          h('span', { className: 'vpsh-hint' }, t('addHint')),
+          h('strong', null, tr('addServer')),
+          h('span', { className: 'vpsh-hint' }, tr('addHint')),
         ),
         h('div', { className: 'vpsh-form-row' },
-          h('label', null, t('configAlias')),
+          h('label', null, tr('configAlias')),
           h('select', { className: 'vpsh-select', value: form.alias, onChange: pickAlias },
-            h('option', { value: '' }, t('manual')),
-            candidates.map((c) => h('option', { key: c.alias, value: c.alias }, c.alias + ' (' + (c.hostname) + (c.alreadyInLedger ? t('inLedger') : '') + ')')),
+            h('option', { value: '' }, tr('manual')),
+            candidates.map((c) => h('option', { key: c.alias, value: c.alias }, c.alias + ' (' + (c.hostname) + (c.alreadyInLedger ? tr('inLedger') : '') + ')')),
           ),
         ),
         h('div', { className: 'vpsh-form-row' },
-          h('label', null, t('displayName')),
-          h('input', { className: 'vpsh-input', value: form.label, onChange: set('label'), placeholder: t('namePh') }),
+          h('label', null, tr('displayName')),
+          h('input', { className: 'vpsh-input', value: form.label, onChange: setr('label'), placeholder: tr('namePh') }),
         ),
         h('div', { className: 'vpsh-form-row' },
-          h('label', null, t('host')),
-          h('input', { className: 'vpsh-input', value: form.host, onChange: set('host'), placeholder: '1.2.3.4' }),
+          h('label', null, tr('host')),
+          h('input', { className: 'vpsh-input', value: form.host, onChange: setr('host'), placeholder: '1.2.3.4' }),
         ),
         h('div', { className: 'vpsh-form-row' },
-          h('label', null, t('port')),
-          h('input', { className: 'vpsh-input', value: form.port, onChange: set('port'), style: { width: 90 } }),
+          h('label', null, tr('port')),
+          h('input', { className: 'vpsh-input', value: form.port, onChange: setr('port'), style: { width: 90 } }),
         ),
         h('div', { className: 'vpsh-form-row' },
-          h('label', null, t('username')),
-          h('input', { className: 'vpsh-input', value: form.username, onChange: set('username'), placeholder: 'root' }),
+          h('label', null, tr('username')),
+          h('input', { className: 'vpsh-input', value: form.username, onChange: setr('username'), placeholder: 'root' }),
         ),
         h('div', { className: 'vpsh-form-row' },
-          h('label', null, t('keyPath')),
-          h('input', { className: 'vpsh-input', value: form.identityFile, onChange: set('identityFile'), placeholder: t('keyPathPh') }),
+          h('label', null, tr('keyPath')),
+          h('input', { className: 'vpsh-input', value: form.identityFile, onChange: setr('identityFile'), placeholder: tr('keyPathPh') }),
         ),
         h('div', { className: 'vpsh-form-row' },
-          h('label', null, t('pasteKey')),
-          h('textarea', { className: 'vpsh-input', value: form.identityKeyContent, onChange: set('identityKeyContent'), placeholder: t('pasteKeyPh'), rows: 4, style: { fontFamily: 'monospace', fontSize: 11, resize: 'vertical' } }),
+          h('label', null, tr('pasteKey')),
+          h('textarea', { className: 'vpsh-input', value: form.identityKeyContent, onChange: setr('identityKeyContent'), placeholder: tr('pasteKeyPh'), rows: 4, style: { fontFamily: 'monospace', fontSize: 11, resize: 'vertical' } }),
         ),
         h('div', { className: 'vpsh-form-row' },
-          h('label', null, t('password')),
-          h('input', { className: 'vpsh-input', type: 'password', value: form.password, onChange: set('password'), placeholder: t('passwordPh') }),
+          h('label', null, tr('password')),
+          h('input', { className: 'vpsh-input', type: 'password', value: form.password, onChange: setr('password'), placeholder: tr('passwordPh') }),
         ),
         h('div', { className: 'vpsh-form-row' },
-          h('label', null, t('jumpHost')),
-          h('input', { className: 'vpsh-input', value: form.jumpHost, onChange: set('jumpHost'), placeholder: t('jumpHostPh') }),
+          h('label', null, tr('jumpHost')),
+          h('input', { className: 'vpsh-input', value: form.jumpHost, onChange: setr('jumpHost'), placeholder: tr('jumpHostPh') }),
         ),
         h('div', { className: 'vpsh-form-row' },
-          h('label', null, t('proxyCmd')),
-          h('input', { className: 'vpsh-input', value: form.proxyCommand, onChange: set('proxyCommand'), placeholder: t('proxyCmdPh') }),
+          h('label', null, tr('proxyCmd')),
+          h('input', { className: 'vpsh-input', value: form.proxyCommand, onChange: setr('proxyCommand'), placeholder: tr('proxyCmdPh') }),
         ),
         h('div', { className: 'vpsh-form-row' },
-          h('label', null, t('tags')),
-          h('input', { className: 'vpsh-input', value: form.tags, onChange: set('tags'), placeholder: t('tagsPh') }),
+          h('label', null, tr('tags')),
+          h('input', { className: 'vpsh-input', value: form.tags, onChange: setr('tags'), placeholder: tr('tagsPh') }),
         ),
         h('div', { className: 'vpsh-form-row' },
-          h('label', null, t('note')),
-          h('input', { className: 'vpsh-input', value: form.note, onChange: set('note') }),
+          h('label', null, tr('note')),
+          h('input', { className: 'vpsh-input', value: form.note, onChange: setr('note') }),
         ),
         h('div', { className: 'vpsh-row' },
           h('label', { style: { display: 'flex', gap: 6, alignItems: 'center' } },
             h('input', { type: 'checkbox', checked: form.test, onChange: setBool('test') }),
-            t('testBeforeSave'),
+            tr('testBeforeSave'),
           ),
           h('span', { style: { flex: 1 } }),
-          h('button', { className: 'vpsh-btn vpsh-btn-primary', disabled: busy, onClick: doAdd }, busy ? t('adding') : t('addBtn')),
+          h('button', { className: 'vpsh-btn vpsh-btn-primary', disabled: busy, onClick: doAdd }, busy ? tr('adding') : tr('addBtn')),
         ),
       ),
     )
   }
 
-  slots.inject('settings.section', () => slots.register(
-    { name: 'settings.section', id: 'vps-hub', order: 30, label: () => t('pageTitle') },
+  slots.injectr('settings.section', () => slots.register(
+    { name: 'settings.section', id: 'vps-hub', order: 30, label: () => tr('pageTitle') },
     () => h(VpsSection),
   ))
 }

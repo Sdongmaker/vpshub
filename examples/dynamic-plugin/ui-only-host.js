@@ -28,9 +28,10 @@ export function apply(ctx) {
   const shell = ctx.get('shell')
   if (shell === undefined) return
 
-  const DATA_FILE = '"$HOME/.dsh/vpshub-targets.json"'
-  const KEYS_DIR = '"$HOME/.dsh/keys"'
-  const ASKPASS_FILE = '"$HOME/.dsh/.vpshub-askpass.sh"'
+  const DSH_DIR = '"${DSH_HOME:-$HOME/.dsh}"'
+  const DATA_FILE = DSH_DIR + '/vpshub-targets.json'
+  const KEYS_DIR = DSH_DIR + '/keys'
+  const ASKPASS_FILE = DSH_DIR + '/.vpshub-askpass.sh'
   const MAX_OUTPUT = 100000
   let homeCache = null
   const passwordCache = new Map() // targetId → password (process memory only)
@@ -121,12 +122,17 @@ export function apply(ctx) {
     return blocks
   }
 
+  function globToRegExp(pattern) {
+    return new RegExp(
+      '^' + pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.') + '$',
+    )
+  }
+
   function patternMatches(pattern, alias) {
     if (pattern === '*') return true
     if (pattern === alias) return true
     try {
-      const re = new RegExp('^' + pattern.replace(/\./g, '\\.').replace(/\*/g, '.*').replace(/\?/g, '.') + '$')
-      return re.test(alias)
+      return globToRegExp(pattern).test(alias)
     } catch { return false }
   }
 
@@ -192,7 +198,7 @@ export function apply(ctx) {
           username: firstToken(fields.user) || undefined,
           identityFile: firstToken(fields.identityfile) || undefined,
           proxyJump: firstToken(fields.proxyjump) || undefined,
-          proxyCommand: firstToken(fields.proxycommand) || undefined,
+          proxyCommand: (fields.proxycommand || '').trim() || undefined,
         })
       }
     }
@@ -212,8 +218,20 @@ export function apply(ctx) {
     if (t.identityFile) opts.push('-o', 'IdentitiesOnly=yes', '-i', t.identityFile)
     if (t.port && t.port !== 22) opts.push('-p', String(t.port))
     if (t.jumpHost) opts.push('-J', t.jumpHost)
-    if (t.proxyCommand) opts.push('-o', 'ProxyCommand=' + t.proxyCommand)
+    if (t.proxyCommand) opts.push('-o', 'ProxyCommand=' + quoteSh(t.proxyCommand))
     return opts
+  }
+
+  const SAFE_HOST_RE = /^[A-Za-z0-9._\-:]+$/
+  const SAFE_IDENTITY_RE = /^[A-Za-z0-9_./~\-]+$/
+  const SAFE_PROXY_RE = /^[A-Za-z0-9_./+:=@%\-]+(?:\s+[A-Za-z0-9_./+:=@%\-]+)*$/
+
+  function validateTargetFields(t) {
+    if (t.host && !SAFE_HOST_RE.test(t.host)) throw new Error('host contains unsafe characters: ' + t.host)
+    if (t.username && !SAFE_HOST_RE.test(t.username)) throw new Error('username contains unsafe characters')
+    if (t.identityFile && !SAFE_IDENTITY_RE.test(t.identityFile)) throw new Error('identityFile path contains unsafe characters')
+    if (t.jumpHost && !SAFE_HOST_RE.test(t.jumpHost) && !/^[A-Za-z0-9._\-]+@[A-Za-z0-9._\-]+(?::\d+)?$/.test(t.jumpHost)) throw new Error('jumpHost contains unsafe characters')
+    if (t.proxyCommand && !SAFE_PROXY_RE.test(t.proxyCommand)) throw new Error('proxyCommand rejected: only whitelisted characters and %h/%p placeholders (executed by ssh through the local shell)')
   }
 
   function sshDest(t) {

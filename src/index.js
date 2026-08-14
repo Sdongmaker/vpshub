@@ -454,6 +454,9 @@ function defineTools(ctx, config) {
         }
         // password → memory only (Orca-style), never persisted
         if (args.password) {
+          if (process.platform === 'win32') {
+            throw new Error('password auth is not supported on Windows (SSH_ASKPASS shell bridge is POSIX-only) — use a private key; the target was NOT saved')
+          }
           passwordCache.set(target.id, String(args.password))
         }
 

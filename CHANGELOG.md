@@ -2,6 +2,25 @@
 
 All notable changes to **dsh-vps-hub** are documented here. Versions follow [SemVer](https://semver.org/).
 
+## [0.1.6] — 2026-08-14
+
+### Fixed (issues #6–#10)
+- **#6 [P1] i18n variable shadowing**: the translate function was shadowed by
+  `targets.map((t) => …)` and `doTest(t)` parameters — non-empty ledgers
+  crashed the list and Test messages failed. Translate fn renamed to `tr`.
+- **#7 dynamic examples**: `host.js` and `ui-only-host.js` were missing the
+  whole review-round fixes (DSH_HOME, full proxyCommand on import, glob
+  escaping, `validateTargetFields` **definition** — calls existed without the
+  function, a runtime ReferenceError). All five patches applied atomically and
+  `ui-only-host.js` regenerated from the fixed host half.
+- **#9 Windows password target**: `vps_add` with a password on Windows now
+  refuses to save the target (it could never authenticate) instead of saving
+  it with an unusable password.
+- **#10 packaging**: npm package now ships `examples/` (smoke test, dynamic
+  plugin UI, patch example). Tool descriptions stay English (model-facing
+  convention); the source badge shows the raw `ssh-config`/`manual` value by
+  design.
+
 ## [0.1.5] — 2026-08-14
 
 ### Fixed (issues #2–#5 review round)

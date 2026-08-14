@@ -536,9 +536,12 @@ function defineTools(ctx, config) {
   ]
 }
 
-export function apply(ctx) {
-  const config = ctx.config || {}
-  for (const tool of defineTools(ctx, config)) {
+export function apply(ctx, config) {
+  // config arrives as the second argument from the Cordis loader (official
+  // pattern, e.g. @deepseek-ai/dsh-mcp-client). NEVER read ctx.config — the
+  // Cordis Guard rejects undeclared ctx properties and kills the whole app.
+  const cfg = config || {}
+  for (const tool of defineTools(ctx, cfg)) {
     ctx.tools.register(tool)
   }
 }

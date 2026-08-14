@@ -5,11 +5,11 @@ import { apply } from '../src/index.js'
 
 const registered = []
 const fakeCtx = {
-  config: {},
   tools: { register: (tool) => registered.push(tool) },
 }
 
-apply(fakeCtx)
+// apply(ctx, config) — config is the loader-provided second argument
+apply(fakeCtx, {})
 console.log('registered tools:', registered.map((t) => t.name).join(', '))
 
 const byName = (n) => registered.find((t) => t.name === n)

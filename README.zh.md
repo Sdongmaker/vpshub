@@ -1,5 +1,7 @@
 # dsh-vps-hub
 
+[![npm version](https://img.shields.io/npm/v/dsh-vps-hub)](https://www.npmjs.com/package/dsh-vps-hub) [![license](https://img.shields.io/npm/l/dsh-vps-hub)](LICENSE)
+
 **[DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的 VPS Hub 插件** —— 在本地维护云服务器 SSH 台账,让 Agent 能够**发现、测试、执行命令、传输文件**,并提供可选的**设置页 UI**,对标 [Orca](https://github.com/stablyai/orca) 的 SSH 远程主机管理体验。
 
 | | |
@@ -27,7 +29,7 @@
 
 ### 方式 A —— 正式安装(推荐,Agent 工具面)
 
-插件是 host 平面 Cordis 插件。安装到 DSH profile 的 `node_modules`,然后在 profile 的 `cordis.patch.yml` 加一行。
+插件已发布到 npm([`dsh-vps-hub`](https://www.npmjs.com/package/dsh-vps-hub)),是 host 平面 Cordis 插件。安装到 DSH profile 的 `node_modules`,然后在 profile 的 `cordis.patch.yml` 加一行:
 
 ```bash
 # 在 DSH profile 目录下(如 ~/.dsh/profiles/web)

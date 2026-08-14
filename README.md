@@ -1,5 +1,7 @@
 # dsh-vps-hub
 
+[![npm version](https://img.shields.io/npm/v/dsh-vps-hub)](https://www.npmjs.com/package/dsh-vps-hub) [![license](https://img.shields.io/npm/l/dsh-vps-hub)](LICENSE)
+
 **VPS Hub for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)** — keep a local ledger of your cloud-server SSH targets and let agents **discover, test, execute on, and transfer files to** them, with an optional **Settings-page UI**, modeled after [Orca](https://github.com/stablyai/orca)'s SSH remote-host management.
 
 | | |
@@ -27,7 +29,7 @@
 
 ### Option A — permanent install (recommended, model tools only)
 
-The plugin is a host-plane Cordis plugin. Install it into your DSH profile's `node_modules`, then add one row to the profile's `cordis.patch.yml`.
+The plugin is published on npm as [`dsh-vps-hub`](https://www.npmjs.com/package/dsh-vps-hub) and is a host-plane Cordis plugin. Install it into your DSH profile's `node_modules`, then add one row to the profile's `cordis.patch.yml`:
 
 ```bash
 # from your DSH profile directory (e.g. ~/.dsh/profiles/web)

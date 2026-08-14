@@ -7,7 +7,8 @@
 | **Agent 工具** | `vps_list` `vps_import_ssh_config` `vps_add` `vps_remove` `vps_test` `vps_exec` `vps_upload` `vps_download` |
 | **设置页 UI** | 可选 —— 设置 → "VPS Hub" 页面(服务器卡片、测试连接、`~/.ssh/config` 别名预填表单、删除) |
 | **存储** | 单一 JSON 台账,Orca 风格:`source: ssh-config \| manual`、删除 tombstone、别名抑制 |
-| **密钥** | **仅存路径引用** —— 内容不存储、不传输、不出现在模型面前 |
+| **认证** | 密钥路径 · 粘贴密钥内容(私有保存到 `~/.dsh/keys`,0600)· 密码(仅内存,对标 Orca) |
+| **代理** | 每台服务器支持 ProxyJump 与 ProxyCommand |
 
 ---
 
@@ -16,7 +17,9 @@
 - **Agent 可发现**:`vps_list` / `vps_import_ssh_config` 让 Agent 直接找到你的服务器,无需重复录入连接信息;`vps_exec` / `vps_upload` / `vps_download` 让它可以实际操作(部署、巡检、看日志、传文件)。
 - **Orca 式管理**:设置页对标 Orca 的 `Settings → SSH` —— 从 `~/.ssh/config`(支持 Include 展开、`*`/`?` 通配、`Host *` 兜底)选一台主机即可自动预填表单;已保存的主机带"已在台账"标记。
 - **零新守护进程**:执行直接调用系统 `ssh` / `scp`。正式包用 `execFile`(无 shell 拼接);动态插件版用 DSH shell 服务。
-- **密钥永不离开本机**:台账只存 `identityFile` **路径引用**。密钥内容不存储、不传输、绝不进入工具输出。刻意不支持密码认证。
+- **密钥留在本机**:台账只存 `identityFile` **路径引用**;粘贴的密钥**内容**写入 `~/.dsh/keys` 私有文件(0600)并以路径引用 —— 绝不存入台账。
+- **密码永不落盘**(对标 Orca):密码仅存在于进程内存(插件生命周期内),通过 `SSH_ASKPASS` 协议经子进程环境交给 `ssh` —— 不进 argv、不进文件,重启即失。
+- **代理支持**:每台服务器可带 ProxyJump(`-J`)与 ProxyCommand,覆盖跳板机与 SOCKS/HTTP 代理。
 
 ---
 
@@ -79,6 +82,8 @@ npm install dsh-vps-hub
 | "阿里云那台在线吗?" | `vps_test { id }` |
 | "在阿里云上跑 df -h" | `vps_exec { id, command: "df -h" }` |
 | "把 app.tar.gz 传到 OVH 那台" | `vps_upload { id, localPath, remotePath }` |
+| "用我粘贴的这把密钥加一台 VPS" | `vps_add { host, username, identityKeyContent: "-----BEGIN …" }` |
+| "用密码测试那台机器 …" | `vps_test { id, password }`(或 `vps_add` 时设置,仅内存) |
 
 ## 工具
 
@@ -86,11 +91,11 @@ npm install dsh-vps-hub
 |---|---|
 | `vps_list` | 列出台账服务器(不含密钥内容);按标签/文本过滤;可选 `withStatus` 连通探测(逐台返回延迟) |
 | `vps_import_ssh_config` | 扫描 `~/.ssh/config`(含 Include)列出可导入主机,带 `alreadyInLedger` 标记 |
-| `vps_add` | 从 config 别名或手动字段添加服务器;可选保存前 `test` |
+| `vps_add` | 从 config 别名或手动字段添加(主机/端口/用户/密钥路径/粘贴密钥/密码/跳板/代理命令);可选保存前 `test` |
 | `vps_remove` | 删除服务器,保留 tombstone + 别名抑制,便于干净地重新添加 |
-| `vps_test` | 非交互连通检测,返回延迟;更新 `lastSeenAt` |
-| `vps_exec` | 在服务器上执行一条 shell 命令(输出默认截断到 100KB) |
-| `vps_upload` / `vps_download` | scp 双向文件传输 |
+| `vps_test` | 非交互连通检测(可选 `password`),返回延迟;更新 `lastSeenAt` |
+| `vps_exec` | 在服务器上执行一条 shell 命令(可选 `password`;输出默认截断到 100KB) |
+| `vps_upload` / `vps_download` | scp 双向文件传输(可选 `password`) |
 
 ## 存储
 
@@ -125,7 +130,9 @@ npm install dsh-vps-hub
 
 ## 安全说明
 
-- `BatchMode=yes` 全程非交互;`StrictHostKeyChecking=accept-new` 首次连接自动接受(如需严格 known_hosts 请改为 `yes`)。
+- 密钥认证全程非交互(`BatchMode=yes`);密码认证使用 `NumberOfPasswordPrompts=1` + `SSH_ASKPASS_REQUIRE=force`。两者均用 `StrictHostKeyChecking=accept-new`(严格 known_hosts 请改为 `yes`)。
+- 密码仅存内存、永不落盘;askpass 桥接脚本位于 `~/.dsh/.vpshub-askpass.sh`(0700),从子进程环境读取密码。重启 DSH 即清空全部缓存密码。
+- **粘贴密钥是权衡**:`identityKeyContent` 会经过模型调用(工具参数),条件允许时优先使用密钥**路径**。保存的内容位于 `~/.dsh/keys/<id>.key`(0600,目录 0700),绝不回显。
 - 正式包把远程命令作为**单个 argv 元素**传给 `execFile` —— 远程命令无法注入本地 shell 语法。
 - 台账文件原子写入,权限 `0600`。请照常保持 `identityFile` 权限 `0600`。
 - 远程执行是真正的"强力工具":模型可以在你添加的服务器上执行任意命令。如需确认门槛,请配合 DSH 的权限/审批层使用。
@@ -161,7 +168,7 @@ node examples/smoke.mjs   # 在假 ctx 上注册工具、读取真实台账、�
 ## 已知限制
 
 - 暂不支持 Windows(依赖系统 `ssh`/`scp`)。
-- 刻意不支持密码认证(仅密钥)。
+- 密码认证经 `SSH_ASKPASS` 支持,但密码仅存内存:DSH 重启后需重新输入(Orca 同样如此)。
 - 设置页 UI 目前以动态插件示例形式提供,尚未打进 npm 包 —— 正式包内置 client 需要 Typert Remote 装饰器管线(TypeScript 构建),计划后续版本实现。
 - `~/.ssh/config` 解析支持 `Include`、`*`/`?` 通配与 `Host *` 兜底;更复杂的 OpenSSH 语义(如 `Match`、hostname 链式解析)未实现 —— 此类主机可用 `vps_add` 显式字段手动添加。
 

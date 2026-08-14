@@ -57,7 +57,7 @@ export function apply(ctx) {
   function VpsSection() {
     const [targets, setTargets] = React.useState(null)
     const [candidates, setCandidates] = React.useState([])
-    const [form, setForm] = React.useState({ label: '', alias: '', host: '', port: '22', username: '', identityFile: '', tags: '', note: '', test: false })
+    const [form, setForm] = React.useState({ label: '', alias: '', host: '', port: '22', username: '', identityFile: '', identityKeyContent: '', password: '', jumpHost: '', proxyCommand: '', tags: '', note: '', test: false })
     const [busy, setBusy] = React.useState(false)
     const [error, setError] = React.useState('')
     const [msg, setMsg] = React.useState('')
@@ -85,7 +85,7 @@ export function apply(ctx) {
       setForm((f) => ({ ...f, alias }))
       const c = candidates.find((x) => x.alias === alias)
       if (c) {
-        setForm((f) => ({ ...f, alias, host: c.hostname, port: String(c.port || 22), username: c.username || '', identityFile: c.identityFile || '', label: c.alias }))
+        setForm((f) => ({ ...f, alias, host: c.hostname, port: String(c.port || 22), username: c.username || '', identityFile: c.identityFile || '', identityKeyContent: '', password: '', label: c.alias }))
       }
     }
 
@@ -98,6 +98,10 @@ export function apply(ctx) {
       if (form.port) a.port = parseInt(form.port, 10)
       if (form.username) a.username = form.username
       if (form.identityFile) a.identityFile = form.identityFile
+      if (form.identityKeyContent) a.identityKeyContent = form.identityKeyContent
+      if (form.password) a.password = form.password
+      if (form.jumpHost) a.jumpHost = form.jumpHost
+      if (form.proxyCommand) a.proxyCommand = form.proxyCommand
       if (form.tags) a.tags = form.tags.split(/[,，\s]+/).filter(Boolean)
       if (form.note) a.note = form.note
       a.test = !!form.test
@@ -110,7 +114,7 @@ export function apply(ctx) {
         setBusy(false)
         if (r && r.error) { setError(r.error); return }
         setMsg('added: ' + (r.label || r.id) + (r.testResult ? ' (' + r.testResult + ')' : ''))
-        setForm({ label: '', alias: '', host: '', port: '22', username: '', identityFile: '', tags: '', note: '', test: false })
+        setForm({ label: '', alias: '', host: '', port: '22', username: '', identityFile: '', identityKeyContent: '', password: '', jumpHost: '', proxyCommand: '', tags: '', note: '', test: false })
         refresh()
       }).catch((e) => { setBusy(false); setError(String(e)) })
     }
@@ -194,6 +198,22 @@ export function apply(ctx) {
         h('div', { className: 'vpsh-form-row' },
           h('label', null, 'Key path'),
           h('input', { className: 'vpsh-input', value: form.identityFile, onChange: set('identityFile'), placeholder: '~/.ssh/id_ed25519 (path only)' }),
+        h('div', { className: 'vpsh-form-row' },
+          h('label', null, 'Paste key'),
+          h('textarea', { className: 'vpsh-input', value: form.identityKeyContent, onChange: set('identityKeyContent'), placeholder: 'Optional: paste key CONTENT — saved to ~/.dsh/keys (0600), never in ledger', rows: 4, style: { fontFamily: 'monospace', fontSize: 11, resize: 'vertical' } }),
+        ),
+        h('div', { className: 'vpsh-form-row' },
+          h('label', null, 'Password'),
+          h('input', { className: 'vpsh-input', type: 'password', value: form.password, onChange: set('password'), placeholder: 'Optional: memory only, never persisted' }),
+        ),
+        h('div', { className: 'vpsh-form-row' },
+          h('label', null, 'Jump host'),
+          h('input', { className: 'vpsh-input', value: form.jumpHost, onChange: set('jumpHost'), placeholder: 'Optional: user@bastion:22 (ProxyJump)' }),
+        ),
+        h('div', { className: 'vpsh-form-row' },
+          h('label', null, 'Proxy cmd'),
+          h('input', { className: 'vpsh-input', value: form.proxyCommand, onChange: set('proxyCommand'), placeholder: 'Optional: nc -X 5 -x proxy:1080 %h %p' }),
+        ),
         ),
         h('div', { className: 'vpsh-form-row' },
           h('label', null, 'Tags'),

@@ -7,7 +7,8 @@
 | **Agent tools** | `vps_list` `vps_import_ssh_config` `vps_add` `vps_remove` `vps_test` `vps_exec` `vps_upload` `vps_download` |
 | **Settings UI** | optional — Settings → "VPS Hub" page (server cards, test-connect, add form with `~/.ssh/config` alias prefill, remove) |
 | **Storage** | one JSON ledger, Orca-style: targets (`source: ssh-config \| manual`), removal tombstones, deleted-alias suppression |
-| **Keys** | stored as **path references only** — contents never stored, transmitted, or shown to the model |
+| **Auth** | key path · pasted key content (saved privately to `~/.dsh/keys`, 0600) · password (memory-only, Orca-style) |
+| **Proxy** | ProxyJump and ProxyCommand on every server |
 
 ---
 
@@ -16,7 +17,9 @@
 - **Agent-discoverable**: `vps_list` / `vps_import_ssh_config` let the agent find your servers without re-typing connection details, and `vps_exec` / `vps_upload` / `vps_download` let it operate them (deploys, inspections, log reads, file transfer).
 - **Orca-style management**: the Settings page mirrors Orca's `Settings → SSH` — pick a host from `~/.ssh/config` (Include-expanded, `*`/`?` wildcards, `Host *` fallback) and it prefills the form; saved hosts show an "in ledger" mark.
 - **Zero new daemons**: execution shells out to the system `ssh` / `scp` binaries. The packaged plugin uses `execFile` (no shell interpolation); the dynamic-plugin variant uses the DSH shell service.
-- **Keys never leave your machine**: the ledger stores only `identityFile` *path references*. Key contents are never stored, never transmitted, and never appear in tool output. Password auth is intentionally unsupported.
+- **Keys stay local**: the ledger stores only `identityFile` *path references*; pasted key CONTENT is written to a private file under `~/.dsh/keys` (mode 0600) and referenced by path — never stored in the ledger.
+- **Passwords never touch disk** (Orca-style): passwords live in process memory for the plugin's lifetime and are handed to `ssh` through the `SSH_ASKPASS` protocol via the child environment — never in argv, never in a file, gone on restart.
+- **Proxy support**: every server can carry a ProxyJump (`-J`) and/or a ProxyCommand, covering bastion hosts and SOCKS/HTTP proxies.
 
 ---
 
@@ -84,6 +87,8 @@ Once installed, just ask your agent:
 | "is the aliyun box up?" | `vps_test { id }` |
 | "run `df -h` on the aliyun box" | `vps_exec { id, command: "df -h" }` |
 | "upload app.tar.gz to the OVH box" | `vps_upload { id, localPath, remotePath }` |
+| "add my VPS with this key I'm pasting" | `vps_add { host, username, identityKeyContent: "-----BEGIN …" }` |
+| "test the box using password …" | `vps_test { id, password }` (or set once via `vps_add`; kept in memory) |
 
 ## Tools
 
@@ -91,11 +96,11 @@ Once installed, just ask your agent:
 |---|---|
 | `vps_list` | List ledger servers (no key content); filter by tag/text; optional `withStatus` connectivity probe (latency per server) |
 | `vps_import_ssh_config` | Scan `~/.ssh/config` (Include-expanded) and list importable hosts with `alreadyInLedger` marks |
-| `vps_add` | Add a server from a config alias or manual fields; optional pre-save `test` |
+| `vps_add` | Add a server from a config alias or manual fields (host/port/user/key path/pasted key content/password/jump host/proxy command); optional pre-save `test` |
 | `vps_remove` | Remove a server, keeping a tombstone + deleted-alias suppression for clean re-add |
-| `vps_test` | Non-interactive connectivity check with latency; updates `lastSeenAt` |
-| `vps_exec` | Run one shell command on a server (output truncated to 100KB by default) |
-| `vps_upload` / `vps_download` | scp file transfer both ways |
+| `vps_test` | Non-interactive connectivity check with latency (optional `password`); updates `lastSeenAt` |
+| `vps_exec` | Run one shell command on a server (optional `password`; output truncated to 100KB by default) |
+| `vps_upload` / `vps_download` | scp file transfer both ways (optional `password`) |
 
 ## Storage
 
@@ -134,9 +139,15 @@ stays clean.
 
 ## Security notes
 
-- `BatchMode=yes` — fully non-interactive; `StrictHostKeyChecking=accept-new`
-  auto-accepts on first connect (switch to `yes` if you need strict
-  `known_hosts` enforcement).
+- Key-auth runs fully non-interactive (`BatchMode=yes`); password-auth runs with
+  `NumberOfPasswordPrompts=1` and `SSH_ASKPASS_REQUIRE=force`. Both use
+  `StrictHostKeyChecking=accept-new` (switch to `yes` for strict `known_hosts`).
+- Passwords are memory-only and never written to disk; the askpass bridge script
+  lives at `~/.dsh/.vpshub-askpass.sh` (0700) and reads the password from the
+  child environment. Restarting DSH clears all cached passwords.
+- **Pasted keys are a trade-off**: `identityKeyContent` passes through the model
+  call (tool argument), so prefer key *paths* when possible. Saved content lives
+  at `~/.dsh/keys/<id>.key` (0600, directory 0700) and is never echoed back.
 - The packaged plugin passes the remote command as a **single argv element to
   `execFile`** — remote commands cannot inject local shell syntax.
 - The ledger file is written atomically with mode `0600`. Keep your
@@ -180,7 +191,8 @@ delete → alias prefill).
 ## Limitations
 
 - Windows not supported (requires system `ssh`/`scp`).
-- Password auth unsupported by design (keys only).
+- Password auth is supported via `SSH_ASKPASS`, but passwords are memory-only:
+  re-enter after every DSH restart (Orca behaves the same way).
 - The Settings-page UI ships as a dynamic-plugin example, not inside the npm
   package yet — a packaged client half needs the Typert Remote decorator
   pipeline (TypeScript build) and is planned for a later release.

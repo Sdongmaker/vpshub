@@ -3,11 +3,14 @@
  *
  * Storage mirrors Orca's SSH-target model: one JSON document holding targets
  * (`source: 'ssh-config' | 'manual'`), removal tombstones, and suppressed
- * config aliases. Private keys are never stored — only path references
- * (`identityFile`), and key contents never appear in tool output.
+ * config aliases. Private keys are stored as path references (`identityFile`);
+ * key CONTENT pasted in is written to a private file under ~/.dsh/keys and
+ * never stored in the ledger. Passwords live only in process memory for the
+ * plugin's lifetime (Orca-style), never on disk.
  *
  * Execution uses the system `ssh`/`scp` binaries via `execFile` (no shell
- * interpolation), non-interactively with `BatchMode=yes`.
+ * interpolation). Password auth uses the SSH_ASKPASS protocol with the
+ * password passed through the child environment, never through argv or disk.
  */
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
@@ -32,11 +35,22 @@ export const Config = z.object({
 
 const execFileAsync = promisify(execFile)
 
+// ── paths & memory-only password cache (Orca-style: never persisted) ───────
+
 function dataFilePath(config) {
   if (config.dataFile) return path.resolve(expandHome(config.dataFile))
   const home = process.env.DSH_HOME || path.join(os.homedir(), '.dsh')
   return path.join(home, 'vpshub-targets.json')
 }
+
+function keysDir() {
+  const home = process.env.DSH_HOME || path.join(os.homedir(), '.dsh')
+  const dir = path.join(home, 'keys')
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 })
+  return dir
+}
+
+const passwordCache = new Map() // targetId → password (process memory only)
 
 function expandHome(p) {
   if (!p) return p
@@ -55,14 +69,34 @@ function truncate(s, n) {
   return s.length > n ? s.slice(0, n) + `\n... [truncated, ${s.length} chars total]` : s
 }
 
-/** Run a binary with an argv array; returns { exitCode, stdout, stderr }. */
-async function run(bin, args, timeoutMs) {
+/** Save pasted key CONTENT to a private file; returns its path. */
+function saveKeyContent(content, id) {
+  const file = path.join(keysDir(), id + '.key')
+  fs.writeFileSync(file, content.endsWith('\n') ? content : content + '\n', { mode: 0o600 })
+  return file
+}
+
+// ── SSH_ASKPASS bridge for password auth (password via child env, never argv/disk) ──
+
+let askpassScript = null
+
+function ensureAskpassScript() {
+  if (askpassScript) return askpassScript
+  const home = process.env.DSH_HOME || path.join(os.homedir(), '.dsh')
+  const file = path.join(home, '.vpshub-askpass.sh')
+  fs.writeFileSync(file, '#!/bin/sh\necho "$VPS_PASSWORD"\n', { mode: 0o700 })
+  askpassScript = file
+  return file
+}
+
+/** Run a binary with argv; password (if any) goes through SSH_ASKPASS env. */
+async function run(bin, args, timeoutMs, password) {
+  const opts = { timeout: timeoutMs, maxBuffer: 4 * 1024 * 1024, encoding: 'utf8' }
+  if (password) {
+    opts.env = { ...process.env, SSH_ASKPASS: ensureAskpassScript(), SSH_ASKPASS_REQUIRE: 'force', VPS_PASSWORD: password }
+  }
   try {
-    const { stdout, stderr } = await execFileAsync(bin, args, {
-      timeout: timeoutMs,
-      maxBuffer: 4 * 1024 * 1024,
-      encoding: 'utf8',
-    })
+    const { stdout, stderr } = await execFileAsync(bin, args, opts)
     return { exitCode: 0, stdout: stdout || '', stderr: stderr || '' }
   } catch (error) {
     return {
@@ -218,12 +252,17 @@ function listConfigCandidates() {
 
 // ── ssh/scp command construction ────────────────────────────────────────────
 
-function sshBaseOpts(t, connectTimeoutSec) {
+function sshBaseOpts(t, connectTimeoutSec, usePassword) {
   const opts = [
-    '-o', 'BatchMode=yes',
     '-o', `ConnectTimeout=${connectTimeoutSec}`,
     '-o', 'StrictHostKeyChecking=accept-new',
   ]
+  if (usePassword) {
+    // password auth: no BatchMode, single prompt via SSH_ASKPASS
+    opts.push('-o', 'NumberOfPasswordPrompts=1')
+  } else {
+    opts.push('-o', 'BatchMode=yes')
+  }
   if (t.identityFile) opts.push('-o', 'IdentitiesOnly=yes', '-i', expandHome(t.identityFile))
   if (t.port && t.port !== 22) opts.push('-p', String(t.port))
   if (t.jumpHost) opts.push('-J', t.jumpHost)
@@ -235,18 +274,29 @@ function sshDest(t) {
   return (t.username ? t.username + '@' : '') + t.host
 }
 
-function sshArgs(t, remoteCommand, connectTimeoutSec) {
-  return [...sshBaseOpts(t, connectTimeoutSec), sshDest(t), remoteCommand]
+function sshArgs(t, remoteCommand, connectTimeoutSec, usePassword) {
+  return [...sshBaseOpts(t, connectTimeoutSec, usePassword), sshDest(t), remoteCommand]
 }
 
-function scpArgs(t, localPath, remotePath, download, connectTimeoutSec) {
-  const opts = ['-o', 'BatchMode=yes', '-o', `ConnectTimeout=${connectTimeoutSec}`, '-o', 'StrictHostKeyChecking=accept-new']
+function scpArgs(t, localPath, remotePath, download, connectTimeoutSec, usePassword) {
+  const opts = ['-o', `ConnectTimeout=${connectTimeoutSec}`, '-o', 'StrictHostKeyChecking=accept-new']
+  if (usePassword) {
+    opts.push('-o', 'NumberOfPasswordPrompts=1')
+  } else {
+    opts.push('-o', 'BatchMode=yes')
+  }
   if (t.identityFile) opts.push('-o', 'IdentitiesOnly=yes', '-i', expandHome(t.identityFile))
   if (t.port && t.port !== 22) opts.push('-P', String(t.port))
   const dest = sshDest(t)
   const src = download ? `${dest}:${remotePath}` : localPath
   const dst = download ? localPath : `${dest}:${remotePath}`
   return [...opts, src, dst]
+}
+
+/** Resolve the password for a target: explicit arg wins, else memory cache. */
+function resolvePassword(target, explicit) {
+  if (explicit) return explicit
+  return passwordCache.get(target.id) || undefined
 }
 
 // ── tools ───────────────────────────────────────────────────────────────────
@@ -269,7 +319,7 @@ function defineTools(ctx, config) {
   return [
     defineTool({
       name: 'vps_list',
-      description: 'List all servers in the VPS Hub ledger (no key content). Filter by tag or any text; optionally attach an online-status check (slower). Returns id/label/host/port/user/identity-file/source/tags/note/lastSeenAt.',
+      description: 'List all servers in the VPS Hub ledger (no key content, no passwords). Filter by tag or any field text; optionally attach an online-status check (slower). Returns id/label/host/port/user/identity-file/source/tags/note/lastSeenAt.',
       parameters: {
         query: { type: 'string', description: 'Optional: filter by tag or any field text' },
         withStatus: { type: 'boolean', description: 'Optional: probe connectivity per server and attach status + latency (a few seconds each)' },
@@ -285,7 +335,7 @@ function defineTools(ctx, config) {
         if (args.withStatus) {
           for (const t of targets) {
             const start = Date.now()
-            const r = await run('ssh', sshArgs(t, 'true', connectTimeoutSec), 10000)
+            const r = await run('ssh', sshArgs(t, 'true', connectTimeoutSec, !!resolvePassword(t)), 10000, resolvePassword(t))
             t.status = r.exitCode === 0 ? 'online' : 'offline'
             t.latencyMs = Date.now() - start
           }
@@ -296,7 +346,7 @@ function defineTools(ctx, config) {
 
     defineTool({
       name: 'vps_import_ssh_config',
-      description: 'Scan ~/.ssh/config (Include-expanded) and list all candidate hosts with alias/hostname/port/user/identity-file, marking which are already in the ledger. Candidates contain no key content.',
+      description: 'Scan ~/.ssh/config (Include-expanded) and list all candidate hosts with alias/hostname/port/user/identity-file/proxy, marking which are already in the ledger. Candidates contain no key content.',
       parameters: {},
       output: OUTPUT,
       async execute() {
@@ -312,7 +362,7 @@ function defineTools(ctx, config) {
 
     defineTool({
       name: 'vps_add',
-      description: 'Add a server to the VPS Hub ledger. Provide alias (import from ~/.ssh/config) or full manual fields; optionally test connectivity before saving. Keys are accepted as file-path references (identityFile) only — never key contents.',
+      description: 'Add a server to the VPS Hub ledger. Provide alias (import from ~/.ssh/config) or full manual fields; optionally test connectivity before saving. Auth options: identityFile (path reference), identityKeyContent (paste key CONTENT — saved privately to ~/.dsh/keys, never in the ledger), or password (kept in process memory only, never persisted — Orca-style; re-enter after a restart). Proxy options: jumpHost (ProxyJump) and proxyCommand.',
       parameters: {
         label: { type: 'string', description: 'Display name, e.g. hk-prod' },
         alias: { type: 'string', description: 'Optional: Host alias from ~/.ssh/config; prefills other fields' },
@@ -320,6 +370,10 @@ function defineTools(ctx, config) {
         port: { type: 'number', description: 'SSH port, default 22' },
         username: { type: 'string', description: 'Login user' },
         identityFile: { type: 'string', description: 'Private key file path, e.g. ~/.ssh/id_ed25519' },
+        identityKeyContent: { type: 'string', description: 'Optional: paste private key CONTENT — saved to a private file under ~/.dsh/keys (mode 0600) and referenced by path; content is never stored in the ledger' },
+        password: { type: 'string', description: 'Optional: SSH password — kept in process memory only, never written to disk; lost on DSH restart' },
+        jumpHost: { type: 'string', description: 'Optional: ProxyJump host, e.g. user@bastion:22' },
+        proxyCommand: { type: 'string', description: 'Optional: ProxyCommand override, e.g. nc -X 5 -x proxy:1080 %h %p' },
         tags: { type: 'array', items: { type: 'string' }, description: 'Optional tags for discovery' },
         note: { type: 'string', description: 'Optional note' },
         test: { type: 'boolean', description: 'Test connectivity before saving' },
@@ -338,14 +392,26 @@ function defineTools(ctx, config) {
         } else {
           if (!args.host) throw new Error('host or alias is required')
           t = { host: String(args.host), port: args.port || 22, username: args.username, identityFile: args.identityFile, source: 'manual' }
+          if (args.jumpHost) t.jumpHost = String(args.jumpHost)
+          if (args.proxyCommand) t.proxyCommand = String(args.proxyCommand)
         }
         if (args.label) t.label = String(args.label)
         if (args.tags) t.tags = args.tags.map(String)
         if (args.note) t.note = String(args.note)
         const target = { id: newId(), createdAt: Date.now(), updatedAt: Date.now(), ...t }
         target.label = target.label || target.configHost || target.host
+
+        // key CONTENT → private file, referenced by path; never in the ledger
+        if (args.identityKeyContent) {
+          target.identityFile = saveKeyContent(String(args.identityKeyContent), target.id)
+        }
+        // password → memory only (Orca-style), never persisted
+        if (args.password) {
+          passwordCache.set(target.id, String(args.password))
+        }
+
         if (args.test) {
-          const r = await run('ssh', sshArgs(target, 'true', connectTimeoutSec), 15000)
+          const r = await run('ssh', sshArgs(target, 'true', connectTimeoutSec, !!resolvePassword(target)), 15000, resolvePassword(target))
           target.lastSeenAt = r.exitCode === 0 ? Date.now() : undefined
           target.testResult = r.exitCode === 0 ? 'ok' : 'failed: ' + truncate(r.stderr || r.stdout, 300)
         }
@@ -355,13 +421,13 @@ function defineTools(ctx, config) {
         data.targets = data.targets || []
         data.targets.push(target)
         saveData(config, data)
-        return { id: target.id, label: target.label, testResult: target.testResult }
+        return { id: target.id, label: target.label, testResult: target.testResult, auth: args.password ? 'password(memory)' : args.identityKeyContent ? 'key-file(saved)' : 'key-path' }
       },
     }),
 
     defineTool({
       name: 'vps_remove',
-      description: 'Remove a server from the ledger. Keeps a tombstone (and suppresses the config alias from re-import) so the host can be re-added cleanly later.',
+      description: 'Remove a server from the ledger. Keeps a tombstone (and suppresses the config alias from re-import) so the host can be re-added cleanly later. Also drops any memory-cached password.',
       parameters: { id: { type: 'string', required: true, description: 'Target id from vps_list' } },
       output: OUTPUT,
       async execute(args) {
@@ -374,20 +440,26 @@ function defineTools(ctx, config) {
         data.removedTargets.push({ oldTargetId: t.id, configHost: t.configHost, host: t.host, port: t.port, username: t.username, label: t.label, removedAt: Date.now() })
         if (t.configHost) data.deletedConfigAliases = [...new Set([...(data.deletedConfigAliases || []), t.configHost])]
         saveData(config, data)
+        passwordCache.delete(t.id)
         return { removed: t.id, label: t.label }
       },
     }),
 
     defineTool({
       name: 'vps_test',
-      description: 'Test SSH connectivity to a server (non-interactive, 8s connect timeout). Returns online status and latency.',
-      parameters: { id: { type: 'string', required: true, description: 'Target id' } },
+      description: 'Test SSH connectivity to a server (non-interactive, 8s connect timeout). Returns online status and latency. Password (if the target needs one) is taken from the memory cache or the optional password argument.',
+      parameters: {
+        id: { type: 'string', required: true, description: 'Target id' },
+        password: { type: 'string', description: 'Optional: password for this test (memory only; also stored in the session cache)' },
+      },
       output: OUTPUT,
       async execute(args) {
         const data = loadData(config)
         const t = findTarget(data, args.id)
+        if (args.password) passwordCache.set(t.id, String(args.password))
+        const pw = resolvePassword(t)
         const start = Date.now()
-        const r = await run('ssh', sshArgs(t, 'true', connectTimeoutSec), 15000)
+        const r = await run('ssh', sshArgs(t, 'true', connectTimeoutSec, !!pw), 15000, pw)
         const ms = Date.now() - start
         if (r.exitCode === 0) {
           t.lastSeenAt = Date.now()
@@ -400,17 +472,20 @@ function defineTools(ctx, config) {
 
     defineTool({
       name: 'vps_exec',
-      description: 'Execute one shell command on a server (non-interactive, 8s connect timeout). Returns exit code, stdout, stderr (output truncated to 100KB). For deploys, inspections, log reads, and maintenance.',
+      description: 'Execute one shell command on a server (non-interactive, 8s connect timeout). Returns exit code, stdout, stderr (output truncated to 100KB). For deploys, inspections, log reads, and maintenance. Password (if needed) comes from the memory cache or the optional argument.',
       parameters: {
         id: { type: 'string', required: true, description: 'Target id' },
         command: { type: 'string', required: true, description: 'Remote shell command, e.g. df -h' },
         timeoutMs: { type: 'number', description: 'Optional execution timeout, default 60000' },
+        password: { type: 'string', description: 'Optional: password for this execution (memory only)' },
       },
       output: OUTPUT,
       async execute(args) {
         const data = loadData(config)
         const t = findTarget(data, args.id)
-        const r = await run('ssh', sshArgs(t, args.command, connectTimeoutSec), args.timeoutMs || 60000)
+        if (args.password) passwordCache.set(t.id, String(args.password))
+        const pw = resolvePassword(t)
+        const r = await run('ssh', sshArgs(t, args.command, connectTimeoutSec, !!pw), args.timeoutMs || 60000, pw)
         t.lastSeenAt = Date.now()
         saveData(config, data)
         return { ok: r.exitCode === 0, exitCode: r.exitCode, stdout: truncate(r.stdout, maxOutputBytes), stderr: truncate(r.stderr, maxOutputBytes) }
@@ -419,17 +494,20 @@ function defineTools(ctx, config) {
 
     defineTool({
       name: 'vps_upload',
-      description: 'Upload a local file to a server with scp (non-interactive).',
+      description: 'Upload a local file to a server with scp (non-interactive). Password (if needed) comes from the memory cache or the optional argument.',
       parameters: {
         id: { type: 'string', required: true, description: 'Target id' },
         localPath: { type: 'string', required: true, description: 'Local file path' },
         remotePath: { type: 'string', required: true, description: 'Remote path, e.g. /root/app.tar.gz' },
+        password: { type: 'string', description: 'Optional: password for this transfer (memory only)' },
       },
       output: OUTPUT,
       async execute(args) {
         const data = loadData(config)
         const t = findTarget(data, args.id)
-        const r = await run('scp', scpArgs(t, args.localPath, args.remotePath, false, connectTimeoutSec), 120000)
+        if (args.password) passwordCache.set(t.id, String(args.password))
+        const pw = resolvePassword(t)
+        const r = await run('scp', scpArgs(t, args.localPath, args.remotePath, false, connectTimeoutSec, !!pw), 120000, pw)
         if (r.exitCode !== 0) throw new Error('upload failed: ' + truncate(r.stderr, 500))
         return { ok: true, to: `${t.host}:${args.remotePath}` }
       },
@@ -437,17 +515,20 @@ function defineTools(ctx, config) {
 
     defineTool({
       name: 'vps_download',
-      description: 'Download a file from a server with scp (non-interactive).',
+      description: 'Download a file from a server with scp (non-interactive). Password (if needed) comes from the memory cache or the optional argument.',
       parameters: {
         id: { type: 'string', required: true, description: 'Target id' },
         remotePath: { type: 'string', required: true, description: 'Remote path' },
         localPath: { type: 'string', required: true, description: 'Local destination path' },
+        password: { type: 'string', description: 'Optional: password for this transfer (memory only)' },
       },
       output: OUTPUT,
       async execute(args) {
         const data = loadData(config)
         const t = findTarget(data, args.id)
-        const r = await run('scp', scpArgs(t, args.localPath, args.remotePath, true, connectTimeoutSec), 120000)
+        if (args.password) passwordCache.set(t.id, String(args.password))
+        const pw = resolvePassword(t)
+        const r = await run('scp', scpArgs(t, args.localPath, args.remotePath, true, connectTimeoutSec, !!pw), 120000, pw)
         if (r.exitCode !== 0) throw new Error('download failed: ' + truncate(r.stderr, 500))
         return { ok: true, from: `${t.host}:${args.remotePath}` }
       },

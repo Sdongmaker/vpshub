@@ -2,6 +2,13 @@
 
 All notable changes to **dsh-vps-hub** are documented here. Versions follow [SemVer](https://semver.org/).
 
+## [0.1.4] — 2026-08-14
+
+### Docs
+- README (en/zh) and npm metadata synced with the repo: UI-only overlay
+  instructions, security sections, project layout, homepage/bugs fields.
+  No code changes — package contents identical to 0.1.3.
+
 ## [0.1.3] — 2026-08-14
 
 Security & robustness review pass (full code audit results):

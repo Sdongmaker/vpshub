@@ -1,6 +1,6 @@
 {
   "name": "dsh-vps-hub",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "VPS Hub for DeepSeek Harness: manage your cloud-server SSH ledger, import hosts from ~/.ssh/config, and let agents discover, test, execute commands on, and transfer files to your servers. Private keys stay local as path references only. Optional Settings-page UI via the dynamic-plugin example.",
   "type": "module",
   "main": "src/index.js",
